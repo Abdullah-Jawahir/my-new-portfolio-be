@@ -9,6 +9,16 @@ const createNodemailerTransport = () => {
   const service = process.env.SMTP_SERVICE || 'gmail';
   const host = process.env.SMTP_HOST;
   const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : undefined;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  
+  console.log('[Nodemailer] Creating transport with:', {
+    service,
+    host,
+    port,
+    user: user ? `${user.substring(0, 5)}...` : 'not set',
+    passSet: !!pass,
+  });
   
   if (host && port) {
     return nodemailer.createTransport({
@@ -16,17 +26,18 @@ const createNodemailerTransport = () => {
       port,
       secure: port === 465,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user,
+        pass,
       },
     });
   }
   
+  // Gmail SMTP configuration
   return nodemailer.createTransport({
     service,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user,
+      pass,
     },
   });
 };
@@ -541,6 +552,8 @@ export const sendReplyEmailWithNodemailer = async (data: ReplyEmailData): Promis
       </html>
     `;
 
+    console.log('[Nodemailer] Sending email to:', data.to);
+    
     const info = await transporter.sendMail({
       from: `"${adminName}" <${process.env.SMTP_USER}>`,
       to: data.to,
@@ -549,10 +562,21 @@ export const sendReplyEmailWithNodemailer = async (data: ReplyEmailData): Promis
       html: htmlContent,
     });
 
-    console.log('Email sent via Nodemailer:', info.messageId);
+    console.log('[Nodemailer] Email sent successfully:', info.messageId);
     return true;
-  } catch (error) {
-    console.error('Failed to send reply email via Nodemailer:', error);
-    throw error;
+  } catch (error: unknown) {
+    console.error('[Nodemailer] Failed to send email:', error);
+    
+    // Provide more helpful error messages
+    if (error instanceof Error) {
+      if (error.message.includes('Invalid login') || error.message.includes('535')) {
+        throw new Error('Gmail authentication failed. Please check your SMTP_USER and SMTP_PASS. For Gmail, use an App Password from https://myaccount.google.com/apppasswords');
+      }
+      if (error.message.includes('ECONNREFUSED')) {
+        throw new Error('Could not connect to email server. Please check your SMTP settings.');
+      }
+      throw error;
+    }
+    throw new Error('Failed to send email via Gmail SMTP');
   }
 };
