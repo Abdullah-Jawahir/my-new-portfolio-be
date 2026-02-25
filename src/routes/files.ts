@@ -194,14 +194,46 @@ router.post('/project-image', authenticateToken, upload.single('image'), async (
       return;
     }
 
+    // Generate a hash of the file to check for duplicates
+    const crypto = require('crypto');
+    const fileHash = crypto.createHash('md5').update(req.file.buffer).digest('hex');
+
+    // Check if we already have this image cached in Firebase
+    const cachedImageDoc = await db.collection('imageCache').doc(fileHash).get();
+    if (cachedImageDoc.exists) {
+      const cachedData = cachedImageDoc.data();
+      // Return cached URL instead of uploading again
+      res.json({
+        success: true,
+        data: { 
+          imageUrl: cachedData?.url,
+          imagePublicId: cachedData?.publicId,
+          cached: true,
+        },
+        message: 'Image retrieved from cache',
+      });
+      return;
+    }
+
     // Upload to Cloudinary
     const result = await uploadToCloudinary(req.file.buffer, 'projects', 'image');
+    
+    // Cache the image reference in Firebase
+    await db.collection('imageCache').doc(fileHash).set({
+      url: result.url,
+      publicId: result.publicId,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      createdAt: new Date(),
+    });
     
     res.json({
       success: true,
       data: { 
         imageUrl: result.url,
         imagePublicId: result.publicId,
+        cached: false,
       },
       message: 'Project image uploaded successfully',
     });
