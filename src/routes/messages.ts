@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../config/firebase';
 import { authenticateToken } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
-import { sendReplyEmail } from '../services/email';
+import { sendReplyEmail, sendReplyEmailWithNodemailer } from '../services/email';
 import { z } from 'zod';
 
 const router = Router();
@@ -12,6 +12,7 @@ const replySchema = z.object({
   subject: z.string().min(1).max(200),
   message: z.string().min(1).max(10000),
   originalMessageId: z.string().optional(),
+  provider: z.enum(['resend', 'nodemailer']).optional().default('resend'),
 });
 
 // GET /api/messages - Get all messages (authenticated)
@@ -163,7 +164,7 @@ router.post('/:id/reply', authenticateToken, async (req: AuthenticatedRequest, r
       return;
     }
 
-    const { to, subject, message } = validation.data;
+    const { to, subject, message, provider } = validation.data;
 
     // Get the original message to include context
     const doc = await db.collection('messages').doc(id).get();
@@ -177,8 +178,7 @@ router.post('/:id/reply', authenticateToken, async (req: AuthenticatedRequest, r
 
     const originalMessage = doc.data();
 
-    // Send the reply email
-    await sendReplyEmail({
+    const emailData = {
       to,
       subject,
       message,
@@ -189,7 +189,14 @@ router.post('/:id/reply', authenticateToken, async (req: AuthenticatedRequest, r
         message: originalMessage.message,
         createdAt: originalMessage.createdAt?.toDate?.() || originalMessage.createdAt,
       } : undefined,
-    });
+    };
+
+    // Send the reply email using selected provider
+    if (provider === 'nodemailer') {
+      await sendReplyEmailWithNodemailer(emailData);
+    } else {
+      await sendReplyEmail(emailData);
+    }
 
     // Store the reply in the database for record keeping
     await db.collection('sentReplies').add({
@@ -199,17 +206,19 @@ router.post('/:id/reply', authenticateToken, async (req: AuthenticatedRequest, r
       message,
       sentAt: new Date(),
       sentBy: req.user?.email,
+      provider: provider || 'resend',
     });
 
     res.json({
       success: true,
       message: 'Reply sent successfully',
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error sending reply:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to send reply. Please try again.';
     res.status(500).json({
       success: false,
-      error: 'Failed to send reply. Please try again.',
+      error: errorMessage,
     });
   }
 });
