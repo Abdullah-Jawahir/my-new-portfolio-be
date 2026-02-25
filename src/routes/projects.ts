@@ -28,10 +28,14 @@ router.get('/', async (req, res: Response) => {
   try {
     const snapshot = await db.collection('projects').orderBy('order').get();
 
-    const projects = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const projects = snapshot.docs.map(doc => {
+      const data = doc.data();
+      console.log(`[Projects] Project ${doc.id} githubUrls:`, data.githubUrls);
+      return {
+        id: doc.id,
+        ...data,
+      };
+    });
 
     res.json({
       success: true,
@@ -76,9 +80,13 @@ router.get('/:id', async (req, res: Response) => {
 // POST /api/projects - Create project
 router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    console.log('[Projects] Received create request body:', JSON.stringify(req.body, null, 2));
+    console.log('[Projects] githubUrls in body:', req.body.githubUrls);
+    
     const validation = projectSchema.safeParse(req.body);
     
     if (!validation.success) {
+      console.error('[Projects] Validation failed:', validation.error.errors);
       res.status(400).json({
         success: false,
         error: 'Invalid project data',
@@ -87,13 +95,20 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
       return;
     }
 
+    console.log('[Projects] Validated data:', JSON.stringify(validation.data, null, 2));
+    console.log('[Projects] Validated githubUrls:', validation.data.githubUrls);
+
     const projectData = {
       ...validation.data,
       githubUrls: validation.data.githubUrls || [],
       createdAt: new Date(),
     };
 
+    console.log('[Projects] Final data to save:', JSON.stringify(projectData, null, 2));
+
     const docRef = await db.collection('projects').add(projectData);
+    
+    console.log('[Projects] Project saved with ID:', docRef.id);
     
     res.status(201).json({
       success: true,
@@ -113,9 +128,14 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = req.params.id as string;
+    console.log('[Projects] Received update request for ID:', id);
+    console.log('[Projects] Update body:', JSON.stringify(req.body, null, 2));
+    console.log('[Projects] githubUrls in update body:', req.body.githubUrls);
+    
     const validation = projectSchema.safeParse(req.body);
     
     if (!validation.success) {
+      console.error('[Projects] Update validation failed:', validation.error.errors);
       res.status(400).json({
         success: false,
         error: 'Invalid project data',
@@ -123,6 +143,8 @@ router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
       });
       return;
     }
+
+    console.log('[Projects] Validated update data:', JSON.stringify(validation.data, null, 2));
 
     const doc = await db.collection('projects').doc(id).get();
     
@@ -139,7 +161,11 @@ router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
       githubUrls: validation.data.githubUrls || [],
     };
 
+    console.log('[Projects] Final update data:', JSON.stringify(updateData, null, 2));
+
     await db.collection('projects').doc(id).update(updateData);
+    
+    console.log('[Projects] Project updated successfully');
     
     res.json({
       success: true,
