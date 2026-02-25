@@ -89,6 +89,7 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 
     const projectData = {
       ...validation.data,
+      githubUrls: validation.data.githubUrls || [],
       createdAt: new Date(),
     };
 
@@ -133,11 +134,16 @@ router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
       return;
     }
 
-    await db.collection('projects').doc(id).update(validation.data);
+    const updateData = {
+      ...validation.data,
+      githubUrls: validation.data.githubUrls || [],
+    };
+
+    await db.collection('projects').doc(id).update(updateData);
     
     res.json({
       success: true,
-      data: { id, ...validation.data },
+      data: { id, ...updateData },
       message: 'Project updated successfully',
     });
   } catch (error) {
