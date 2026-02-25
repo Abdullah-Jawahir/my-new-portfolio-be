@@ -10,6 +10,7 @@ import projectsRoutes from './routes/projects';
 import educationRoutes from './routes/education';
 import contactRoutes from './routes/contact';
 import filesRoutes from './routes/files';
+import adminRoutes from './routes/admin';
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Routes
+app.use('/api/admin', adminRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/projects', projectsRoutes);
