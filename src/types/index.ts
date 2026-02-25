@@ -45,6 +45,11 @@ export interface AdditionalSkill {
   order: number;
 }
 
+export interface GithubRepo {
+  label: string;
+  url: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -52,6 +57,7 @@ export interface Project {
   imageUrl: string;
   technologies: string[];
   githubUrl: string;
+  githubUrls?: GithubRepo[];
   liveUrl: string;
   featured: boolean;
   order: number;
