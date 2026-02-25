@@ -6,13 +6,19 @@ import { z } from 'zod';
 
 const router = Router();
 
+const githubRepoSchema = z.object({
+  label: z.string().min(1).max(50),
+  url: z.string().url(),
+});
+
 const projectSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000),
-  imageUrl: z.string().url().optional(),
+  imageUrl: z.string().url().optional().or(z.literal('')),
   technologies: z.array(z.string()),
-  githubUrl: z.string().url().optional(),
-  liveUrl: z.string().url().optional(),
+  githubUrl: z.string().url().optional().or(z.literal('')),
+  githubUrls: z.array(githubRepoSchema).optional(),
+  liveUrl: z.string().url().optional().or(z.literal('')),
   featured: z.boolean(),
   order: z.number().int().min(0),
 });
