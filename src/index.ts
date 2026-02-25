@@ -31,14 +31,16 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Stricter rate limit for contact form
+// Stricter rate limit for contact form - respects Resend's 2 req/sec limit
 const contactLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // Limit each IP to 5 contact form submissions per hour
+  windowMs: 60 * 1000, // 1 minute window
+  max: 3, // 3 submissions per minute (well under Resend's 2/sec)
   message: {
     success: false,
-    error: 'Too many contact form submissions. Please try again later.',
+    error: 'Too many contact form submissions. Please wait a minute and try again.',
   },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // Body parsing
