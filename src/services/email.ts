@@ -1,6 +1,35 @@
 import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Nodemailer transporter configuration
+// Uses Gmail SMTP by default, can be configured via environment variables
+const createNodemailerTransport = () => {
+  const service = process.env.SMTP_SERVICE || 'gmail';
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : undefined;
+  
+  if (host && port) {
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+  }
+  
+  return nodemailer.createTransport({
+    service,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+};
 
 interface ContactEmailData {
   name: string;
@@ -331,6 +360,199 @@ export const sendReplyEmail = async (data: ReplyEmailData): Promise<boolean> => 
     return true;
   } catch (error) {
     console.error('Failed to send reply email:', error);
+    throw error;
+  }
+};
+
+// Send reply email using Nodemailer (Gmail SMTP or other SMTP service)
+export const sendReplyEmailWithNodemailer = async (data: ReplyEmailData): Promise<boolean> => {
+  const adminName = process.env.ADMIN_NAME || 'Abdullah Jawahir';
+  const adminEmail = process.env.ADMIN_EMAIL || 'mjabdullah33@gmail.com';
+  
+  // Check if SMTP credentials are configured
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.error('SMTP credentials not configured. Set SMTP_USER and SMTP_PASS in .env');
+    throw new Error('Email service not configured. Please use the "Open Email App" option instead.');
+  }
+  
+  try {
+    const transporter = createNodemailerTransport();
+    
+    const originalDate = data.originalMessage?.createdAt 
+      ? new Date(data.originalMessage.createdAt).toLocaleString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '';
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+          }
+          .email-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+          }
+          .header p {
+            margin: 8px 0 0;
+            opacity: 0.9;
+            font-size: 14px;
+          }
+          .content {
+            padding: 30px;
+          }
+          .greeting {
+            font-size: 16px;
+            color: #374151;
+            margin-bottom: 20px;
+          }
+          .message-body {
+            font-size: 15px;
+            color: #4b5563;
+            white-space: pre-wrap;
+            line-height: 1.8;
+            margin-bottom: 30px;
+          }
+          .signature {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 20px;
+            margin-top: 30px;
+          }
+          .signature-name {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 16px;
+          }
+          .signature-title {
+            color: #6b7280;
+            font-size: 14px;
+            margin-top: 4px;
+          }
+          .original-message {
+            background: #f9fafb;
+            border-left: 4px solid #3b82f6;
+            padding: 20px;
+            margin-top: 30px;
+            border-radius: 0 8px 8px 0;
+          }
+          .original-header {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .original-meta {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-bottom: 8px;
+          }
+          .original-content {
+            font-size: 14px;
+            color: #6b7280;
+            white-space: pre-wrap;
+          }
+          .footer {
+            background: #f9fafb;
+            padding: 20px 30px;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+          }
+          .footer p {
+            margin: 0;
+            font-size: 12px;
+            color: #9ca3af;
+          }
+          .social-links {
+            margin-top: 15px;
+          }
+          .social-links a {
+            display: inline-block;
+            margin: 0 8px;
+            color: #6b7280;
+            text-decoration: none;
+            font-size: 13px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <div class="header">
+            <h1>${adminName}</h1>
+            <p>Full Stack Engineer</p>
+          </div>
+          <div class="content">
+            <div class="greeting">
+              Hi ${data.originalMessage?.name || 'there'},
+            </div>
+            <div class="message-body">${data.message}</div>
+            <div class="signature">
+              <div class="signature-name">${adminName}</div>
+              <div class="signature-title">Full Stack Engineer</div>
+            </div>
+            ${data.originalMessage ? `
+            <div class="original-message">
+              <div class="original-header">In reply to your message</div>
+              <div class="original-meta">
+                <strong>From:</strong> ${data.originalMessage.name} &lt;${data.originalMessage.email}&gt;<br>
+                <strong>Date:</strong> ${originalDate}<br>
+                <strong>Subject:</strong> ${data.originalMessage.subject}
+              </div>
+              <div class="original-content">${data.originalMessage.message}</div>
+            </div>
+            ` : ''}
+          </div>
+          <div class="footer">
+            <p>This email was sent by ${adminName}</p>
+            <div class="social-links">
+              <a href="https://github.com/Abdullah-Jawahir">GitHub</a>
+              <a href="https://www.linkedin.com/in/mohamed-jawahir-abdullah/">LinkedIn</a>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const info = await transporter.sendMail({
+      from: `"${adminName}" <${process.env.SMTP_USER}>`,
+      to: data.to,
+      replyTo: adminEmail,
+      subject: data.subject,
+      html: htmlContent,
+    });
+
+    console.log('Email sent via Nodemailer:', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('Failed to send reply email via Nodemailer:', error);
     throw error;
   }
 };
