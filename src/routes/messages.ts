@@ -1,0 +1,282 @@
+import { Router, Response } from 'express';
+import { db } from '../config/firebase';
+import { authenticateToken } from '../middleware/auth';
+import { AuthenticatedRequest } from '../types';
+import { sendReplyEmail } from '../services/email';
+import { z } from 'zod';
+
+const router = Router();
+
+const replySchema = z.object({
+  to: z.string().email(),
+  subject: z.string().min(1).max(200),
+  message: z.string().min(1).max(10000),
+  originalMessageId: z.string().optional(),
+});
+
+// GET /api/messages - Get all messages (authenticated)
+router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const snapshot = await db.collection('messages')
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    const messages = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() || data.createdAt,
+      };
+    });
+
+    const unreadCount = messages.filter(m => !(m as Record<string, unknown>).read).length;
+
+    res.json({
+      success: true,
+      data: {
+        messages,
+        total: messages.length,
+        unreadCount,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch messages',
+    });
+  }
+});
+
+// GET /api/messages/stats - Get message statistics (authenticated)
+router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const snapshot = await db.collection('messages').get();
+    
+    const messages = snapshot.docs.map(doc => doc.data());
+    const total = messages.length;
+    const unread = messages.filter(m => !m.read).length;
+    const read = total - unread;
+
+    res.json({
+      success: true,
+      data: {
+        total,
+        unread,
+        read,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching message stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch message statistics',
+    });
+  }
+});
+
+// GET /api/messages/:id - Get single message (authenticated)
+router.get('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const doc = await db.collection('messages').doc(id).get();
+
+    if (!doc.exists) {
+      res.status(404).json({
+        success: false,
+        error: 'Message not found',
+      });
+      return;
+    }
+
+    const data = doc.data();
+
+    res.json({
+      success: true,
+      data: {
+        id: doc.id,
+        ...data,
+        createdAt: data?.createdAt?.toDate?.() || data?.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching message:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch message',
+    });
+  }
+});
+
+// PATCH /api/messages/:id/read - Mark message as read/unread (authenticated)
+router.patch('/:id/read', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { read } = req.body;
+    
+    if (typeof read !== 'boolean') {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid read value',
+      });
+      return;
+    }
+
+    const doc = await db.collection('messages').doc(id).get();
+    
+    if (!doc.exists) {
+      res.status(404).json({
+        success: false,
+        error: 'Message not found',
+      });
+      return;
+    }
+
+    await db.collection('messages').doc(id).update({ read });
+    
+    res.json({
+      success: true,
+      message: `Message marked as ${read ? 'read' : 'unread'}`,
+    });
+  } catch (error) {
+    console.error('Error updating message read status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update message',
+    });
+  }
+});
+
+// POST /api/messages/:id/reply - Send reply email (authenticated)
+router.post('/:id/reply', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const validation = replySchema.safeParse(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid reply data',
+        details: validation.error.errors,
+      });
+      return;
+    }
+
+    const { to, subject, message } = validation.data;
+
+    // Get the original message to include context
+    const doc = await db.collection('messages').doc(id).get();
+    if (!doc.exists) {
+      res.status(404).json({
+        success: false,
+        error: 'Original message not found',
+      });
+      return;
+    }
+
+    const originalMessage = doc.data();
+
+    // Send the reply email
+    await sendReplyEmail({
+      to,
+      subject,
+      message,
+      originalMessage: originalMessage ? {
+        name: originalMessage.name,
+        email: originalMessage.email,
+        subject: originalMessage.subject,
+        message: originalMessage.message,
+        createdAt: originalMessage.createdAt?.toDate?.() || originalMessage.createdAt,
+      } : undefined,
+    });
+
+    // Store the reply in the database for record keeping
+    await db.collection('sentReplies').add({
+      originalMessageId: id,
+      to,
+      subject,
+      message,
+      sentAt: new Date(),
+      sentBy: req.user?.email,
+    });
+
+    res.json({
+      success: true,
+      message: 'Reply sent successfully',
+    });
+  } catch (error) {
+    console.error('Error sending reply:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send reply. Please try again.',
+    });
+  }
+});
+
+// DELETE /api/messages/:id - Delete message (authenticated)
+router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    
+    const doc = await db.collection('messages').doc(id).get();
+    
+    if (!doc.exists) {
+      res.status(404).json({
+        success: false,
+        error: 'Message not found',
+      });
+      return;
+    }
+
+    await db.collection('messages').doc(id).delete();
+    
+    res.json({
+      success: true,
+      message: 'Message deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting message:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete message',
+    });
+  }
+});
+
+// DELETE /api/messages - Delete multiple messages (authenticated)
+router.delete('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { ids } = req.body;
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid message IDs',
+      });
+      return;
+    }
+
+    const batch = db.batch();
+    
+    ids.forEach((id: string) => {
+      const ref = db.collection('messages').doc(id);
+      batch.delete(ref);
+    });
+    
+    await batch.commit();
+    
+    res.json({
+      success: true,
+      message: `${ids.length} message(s) deleted successfully`,
+    });
+  } catch (error) {
+    console.error('Error deleting messages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete messages',
+    });
+  }
+});
+
+export default router;
