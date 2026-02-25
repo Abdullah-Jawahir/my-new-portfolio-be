@@ -9,6 +9,7 @@ import skillsRoutes from './routes/skills';
 import projectsRoutes from './routes/projects';
 import educationRoutes from './routes/education';
 import contactRoutes from './routes/contact';
+import messagesRoutes from './routes/messages';
 import filesRoutes from './routes/files';
 import adminRoutes from './routes/admin';
 
@@ -63,6 +64,7 @@ app.use('/api/skills', skillsRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/education', educationRoutes);
 app.use('/api/contact', contactLimiter, contactRoutes);
+app.use('/api/messages', messagesRoutes);
 app.use('/api/files', filesRoutes);
 
 // 404 handler
