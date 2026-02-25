@@ -12,14 +12,6 @@ const createNodemailerTransport = () => {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
   
-  console.log('[Nodemailer] Creating transport with:', {
-    service,
-    host,
-    port,
-    user: user ? `${user.substring(0, 5)}...` : 'not set',
-    passSet: !!pass,
-  });
-  
   if (host && port) {
     return nodemailer.createTransport({
       host,
@@ -552,8 +544,6 @@ export const sendReplyEmailWithNodemailer = async (data: ReplyEmailData): Promis
       </html>
     `;
 
-    console.log('[Nodemailer] Sending email to:', data.to);
-    
     const info = await transporter.sendMail({
       from: `"${adminName}" <${process.env.SMTP_USER}>`,
       to: data.to,
@@ -562,10 +552,10 @@ export const sendReplyEmailWithNodemailer = async (data: ReplyEmailData): Promis
       html: htmlContent,
     });
 
-    console.log('[Nodemailer] Email sent successfully:', info.messageId);
+    console.log('Email sent via Nodemailer:', info.messageId);
     return true;
   } catch (error: unknown) {
-    console.error('[Nodemailer] Failed to send email:', error);
+    console.error('Failed to send email via Nodemailer:', error);
     
     // Provide more helpful error messages
     if (error instanceof Error) {
