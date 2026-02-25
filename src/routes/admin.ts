@@ -8,28 +8,20 @@ const router = Router();
 const ADMIN_CONFIG_DOC = 'config';
 const ADMIN_COLLECTION = 'adminConfig';
 
+// The only allowed admin email - hardcoded for security
+const ALLOWED_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'mjabdullah33@gmail.com';
+
 // GET /api/admin/status - Check if admin is configured (public)
 router.get('/status', async (req, res: Response) => {
   try {
     const configDoc = await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).get();
     
-    if (!configDoc.exists) {
-      res.json({
-        success: true,
-        data: {
-          isConfigured: false,
-          message: 'No admin configured yet. First Google sign-in will become admin.',
-        },
-      });
-      return;
-    }
-
-    const config = configDoc.data();
     res.json({
       success: true,
       data: {
-        isConfigured: true,
-        adminEmail: config?.adminEmail ? maskEmail(config.adminEmail) : null,
+        isConfigured: configDoc.exists,
+        // Only show masked email for security
+        adminEmail: maskEmail(ALLOWED_ADMIN_EMAIL),
       },
     });
   } catch (error) {
@@ -37,75 +29,6 @@ router.get('/status', async (req, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to check admin status',
-    });
-  }
-});
-
-// POST /api/admin/register - Register as admin (first Google sign-in only)
-router.post('/register', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const user = req.user;
-    
-    if (!user) {
-      res.status(401).json({
-        success: false,
-        error: 'Authentication required',
-      });
-      return;
-    }
-
-    // Check if admin is already configured
-    const configDoc = await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).get();
-    
-    if (configDoc.exists) {
-      const config = configDoc.data();
-      
-      // Check if this user is the admin
-      if (config?.adminUid === user.uid) {
-        res.json({
-          success: true,
-          data: {
-            isAdmin: true,
-            message: 'You are already the admin',
-          },
-        });
-        return;
-      }
-      
-      // Someone else is already admin
-      res.status(403).json({
-        success: false,
-        error: 'Admin already configured. Access denied.',
-      });
-      return;
-    }
-
-    // Get user details from Firebase Auth
-    const userRecord = await auth.getUser(user.uid);
-    
-    // Register this user as admin
-    await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).set({
-      adminUid: user.uid,
-      adminEmail: userRecord.email,
-      adminName: userRecord.displayName || null,
-      adminPhoto: userRecord.photoURL || null,
-      provider: userRecord.providerData[0]?.providerId || 'unknown',
-      registeredAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    res.json({
-      success: true,
-      data: {
-        isAdmin: true,
-        message: 'You have been registered as the admin',
-      },
-    });
-  } catch (error) {
-    console.error('Error registering admin:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to register admin',
     });
   }
 });
@@ -123,23 +46,13 @@ router.get('/verify', authenticateToken, async (req: AuthenticatedRequest, res: 
       return;
     }
 
-    const configDoc = await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).get();
+    // Get user details from Firebase Auth
+    const userRecord = await auth.getUser(user.uid);
+    const userEmail = userRecord.email?.toLowerCase();
+    const allowedEmail = ALLOWED_ADMIN_EMAIL.toLowerCase();
     
-    if (!configDoc.exists) {
-      // No admin configured yet - this user can become admin
-      res.json({
-        success: true,
-        data: {
-          isAdmin: false,
-          canRegister: true,
-          message: 'No admin configured. You can register as admin.',
-        },
-      });
-      return;
-    }
-
-    const config = configDoc.data();
-    const isAdmin = config?.adminUid === user.uid;
+    // Check if user's email matches the allowed admin email
+    const isAdmin = userEmail === allowedEmail;
     
     if (!isAdmin) {
       res.status(403).json({
@@ -153,12 +66,36 @@ router.get('/verify', authenticateToken, async (req: AuthenticatedRequest, res: 
       return;
     }
 
+    // User is the admin - update or create admin config
+    const configDoc = await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).get();
+    
+    if (!configDoc.exists) {
+      // Auto-register this admin
+      await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).set({
+        adminUid: user.uid,
+        adminEmail: userRecord.email,
+        adminName: userRecord.displayName || null,
+        adminPhoto: userRecord.photoURL || null,
+        provider: userRecord.providerData[0]?.providerId || 'unknown',
+        registeredAt: new Date(),
+        lastLoginAt: new Date(),
+      });
+    } else {
+      // Update last login
+      await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).update({
+        lastLoginAt: new Date(),
+        adminUid: user.uid, // Update UID in case it changed (e.g., different provider)
+        adminName: userRecord.displayName || configDoc.data()?.adminName,
+        adminPhoto: userRecord.photoURL || configDoc.data()?.adminPhoto,
+      });
+    }
+
     res.json({
       success: true,
       data: {
         isAdmin: true,
-        adminEmail: config?.adminEmail,
-        adminName: config?.adminName,
+        adminEmail: userRecord.email,
+        adminName: userRecord.displayName,
       },
     });
   } catch (error) {
@@ -166,6 +103,60 @@ router.get('/verify', authenticateToken, async (req: AuthenticatedRequest, res: 
     res.status(500).json({
       success: false,
       error: 'Failed to verify admin status',
+    });
+  }
+});
+
+// POST /api/admin/register - No longer needed but kept for compatibility
+router.post('/register', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user;
+    
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+      return;
+    }
+
+    // Get user details from Firebase Auth
+    const userRecord = await auth.getUser(user.uid);
+    const userEmail = userRecord.email?.toLowerCase();
+    const allowedEmail = ALLOWED_ADMIN_EMAIL.toLowerCase();
+    
+    // Check if user's email matches the allowed admin email
+    if (userEmail !== allowedEmail) {
+      res.status(403).json({
+        success: false,
+        error: 'Access denied. Only the authorized admin email can register.',
+      });
+      return;
+    }
+
+    // Register/update admin
+    await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).set({
+      adminUid: user.uid,
+      adminEmail: userRecord.email,
+      adminName: userRecord.displayName || null,
+      adminPhoto: userRecord.photoURL || null,
+      provider: userRecord.providerData[0]?.providerId || 'unknown',
+      registeredAt: new Date(),
+      lastLoginAt: new Date(),
+    }, { merge: true });
+
+    res.json({
+      success: true,
+      data: {
+        isAdmin: true,
+        message: 'Admin registered successfully',
+      },
+    });
+  } catch (error) {
+    console.error('Error registering admin:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to register admin',
     });
   }
 });
