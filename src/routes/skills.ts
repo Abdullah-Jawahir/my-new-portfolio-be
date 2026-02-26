@@ -15,12 +15,13 @@ const skillItemSchema = z.object({
 });
 
 const skillCategorySchema = z.object({
-  category: z.enum(['frontend', 'backend']),
+  category: z.enum(['frontend', 'backend', 'database', 'devops', 'mobile', 'ai_ml', 'security', 'tools']),
   title: z.string().min(1).max(100),
   icon: z.string(),
   description: z.string().max(500),
   order: z.number().int().min(0),
   skills: z.array(skillItemSchema),
+  featured: z.boolean().optional().default(true),
 });
 
 const additionalSkillSchema = z.object({
@@ -319,9 +320,13 @@ router.put('/reorder', authenticateToken, async (req: AuthenticatedRequest, res:
     const batch = db.batch();
     
     if (categories && Array.isArray(categories)) {
-      categories.forEach((item: { id: string; order: number }) => {
+      categories.forEach((item: { id: string; order: number; featured?: boolean }) => {
         const ref = db.collection('skillCategories').doc(item.id);
-        batch.update(ref, { order: item.order });
+        const updateData: Record<string, unknown> = { order: item.order };
+        if (typeof item.featured === 'boolean') {
+          updateData.featured = item.featured;
+        }
+        batch.update(ref, updateData);
       });
     }
     
