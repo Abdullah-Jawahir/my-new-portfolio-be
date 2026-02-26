@@ -11,6 +11,11 @@ const profileSchema = z.object({
   title: z.string().min(1).max(100),
   greeting: z.string().max(200),
   description: z.string().max(2000),
+  tagline: z.string().max(200).optional(),
+  extendedBio: z.string().max(5000).optional(),
+  personalQuote: z.string().max(500).optional(),
+  location: z.string().max(100).optional(),
+  yearsExperience: z.string().max(50).optional(),
   avatarUrl: z.string().url().optional(),
   cvUrl: z.string().url().optional(),
 });
