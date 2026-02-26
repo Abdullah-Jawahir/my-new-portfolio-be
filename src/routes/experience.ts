@@ -182,6 +182,43 @@ router.delete('/work/:id', authenticateToken, async (req: AuthenticatedRequest, 
   }
 });
 
+// PUT /api/experience/work/batch/reorder - Bulk reorder work experience
+router.put('/work/batch/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { items } = req.body;
+    
+    if (!Array.isArray(items)) {
+      res.status(400).json({
+        success: false,
+        error: 'Items must be an array',
+      });
+      return;
+    }
+
+    const batch = db.batch();
+    
+    for (const item of items) {
+      if (item.id && typeof item.order === 'number') {
+        const docRef = db.collection('workExperience').doc(item.id);
+        batch.update(docRef, { order: item.order, updatedAt: new Date() });
+      }
+    }
+
+    await batch.commit();
+
+    res.json({
+      success: true,
+      message: 'Work experience reordered successfully',
+    });
+  } catch (error) {
+    console.error('Error reordering work experience:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reorder work experience',
+    });
+  }
+});
+
 // Certifications CRUD
 router.post('/certifications', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
