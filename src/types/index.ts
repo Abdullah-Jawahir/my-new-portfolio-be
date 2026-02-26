@@ -18,6 +18,7 @@ export interface Stat {
   label: string;
   description: string;
   order: number;
+  featured?: boolean;
 }
 
 export interface SkillCategory {
