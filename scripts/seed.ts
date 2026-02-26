@@ -38,10 +38,10 @@ const seedData = async () => {
 
   // Stats
   const stats = [
-    { icon: 'Briefcase', number: '2+', label: 'Years Experience', description: 'Full Stack Development', order: 0 },
-    { icon: 'GraduationCap', number: '4', label: 'Certifications', description: 'Python, Web Design & Responsive Design', order: 1 },
-    { icon: 'Code2', number: '10+', label: 'Projects', description: 'Completed Successfully', order: 2 },
-    { icon: 'Award', number: '5+', label: 'Technologies', description: 'Mastered & Proficient', order: 3 },
+    { icon: 'Briefcase', number: '2+', label: 'Years Experience', description: 'Full Stack Development', order: 0, featured: true },
+    { icon: 'GraduationCap', number: '4', label: 'Certifications', description: 'Python, Web Design & Responsive Design', order: 1, featured: true },
+    { icon: 'Code2', number: '10+', label: 'Projects', description: 'Completed Successfully', order: 2, featured: true },
+    { icon: 'Award', number: '5+', label: 'Technologies', description: 'Mastered & Proficient', order: 3, featured: false },
   ];
 
   for (const stat of stats) {
