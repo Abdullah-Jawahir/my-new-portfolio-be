@@ -11,6 +11,11 @@ const profileSchema = z.object({
   title: z.string().min(1).max(100),
   greeting: z.string().max(200),
   description: z.string().max(2000),
+  tagline: z.string().max(200).optional(),
+  extendedBio: z.string().max(5000).optional(),
+  personalQuote: z.string().max(500).optional(),
+  location: z.string().max(100).optional(),
+  yearsExperience: z.string().max(50).optional(),
   avatarUrl: z.string().url().optional(),
   cvUrl: z.string().url().optional(),
 });
@@ -21,6 +26,7 @@ const statSchema = z.object({
   label: z.string(),
   description: z.string(),
   order: z.number().int().min(0),
+  featured: z.boolean().optional().default(true),
 });
 
 const contactInfoSchema = z.object({
@@ -177,6 +183,47 @@ router.delete('/stats/:id', authenticateToken, async (req: AuthenticatedRequest,
     res.status(500).json({
       success: false,
       error: 'Failed to delete stat',
+    });
+  }
+});
+
+// PUT /api/profile/stats/batch/reorder - Bulk reorder stats
+router.put('/stats/batch/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { items } = req.body;
+    
+    if (!Array.isArray(items)) {
+      res.status(400).json({
+        success: false,
+        error: 'Items must be an array',
+      });
+      return;
+    }
+
+    const batch = db.batch();
+    
+    for (const item of items) {
+      if (item.id && typeof item.order === 'number') {
+        const docRef = db.collection('stats').doc(item.id);
+        const updateData: Record<string, unknown> = { order: item.order };
+        if (typeof item.featured === 'boolean') {
+          updateData.featured = item.featured;
+        }
+        batch.update(docRef, updateData);
+      }
+    }
+
+    await batch.commit();
+
+    res.json({
+      success: true,
+      message: 'Stats reordered successfully',
+    });
+  } catch (error) {
+    console.error('Error reordering stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reorder stats',
     });
   }
 });

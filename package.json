@@ -8,7 +8,10 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "vercel-build": "tsc",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "seed:experience": "tsx scripts/seed-experience.ts",
+    "seed:tools-faqs": "tsx scripts/seed-tools-faqs.ts",
+    "seed:about-profile": "tsx scripts/seed-about-profile.ts"
   },
   "dependencies": {
     "cloudinary": "^2.9.0",

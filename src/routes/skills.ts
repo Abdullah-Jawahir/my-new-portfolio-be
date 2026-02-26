@@ -15,12 +15,13 @@ const skillItemSchema = z.object({
 });
 
 const skillCategorySchema = z.object({
-  category: z.enum(['frontend', 'backend']),
+  category: z.enum(['frontend', 'backend', 'database', 'devops', 'mobile', 'ai_ml', 'security', 'tools']),
   title: z.string().min(1).max(100),
   icon: z.string(),
   description: z.string().max(500),
   order: z.number().int().min(0),
   skills: z.array(skillItemSchema),
+  featured: z.boolean().optional().default(true),
 });
 
 const additionalSkillSchema = z.object({
@@ -28,11 +29,20 @@ const additionalSkillSchema = z.object({
   order: z.number().int().min(0),
 });
 
+const toolTechSchema = z.object({
+  name: z.string().min(1).max(50),
+  category: z.string().min(1).max(50),
+  order: z.number().int().min(0),
+});
+
 // GET /api/skills - Get all skills
 router.get('/', async (req, res: Response) => {
   try {
-    const categoriesSnapshot = await db.collection('skillCategories').orderBy('order').get();
-    const additionalSnapshot = await db.collection('additionalSkills').orderBy('order').get();
+    const [categoriesSnapshot, additionalSnapshot, toolsSnapshot] = await Promise.all([
+      db.collection('skillCategories').orderBy('order').get(),
+      db.collection('additionalSkills').orderBy('order').get(),
+      db.collection('toolsTechnologies').orderBy('order').get(),
+    ]);
 
     const categories = categoriesSnapshot.docs.map(doc => ({
       id: doc.id,
@@ -44,11 +54,17 @@ router.get('/', async (req, res: Response) => {
       ...doc.data(),
     }));
 
+    const toolsTechnologies = toolsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
     res.json({
       success: true,
       data: {
         categories,
         additionalSkills,
+        toolsTechnologies,
       },
     });
   } catch (error) {
@@ -218,6 +234,84 @@ router.delete('/additional/:id', authenticateToken, async (req: AuthenticatedReq
   }
 });
 
+// Tools & Technologies CRUD
+router.post('/tools', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const validation = toolTechSchema.safeParse(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid tool/technology data',
+        details: validation.error.errors,
+      });
+      return;
+    }
+
+    const docRef = await db.collection('toolsTechnologies').add(validation.data);
+    
+    res.status(201).json({
+      success: true,
+      data: { id: docRef.id, ...validation.data },
+      message: 'Tool/Technology created successfully',
+    });
+  } catch (error) {
+    console.error('Error creating tool/technology:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create tool/technology',
+    });
+  }
+});
+
+router.put('/tools/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const validation = toolTechSchema.safeParse(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid tool/technology data',
+        details: validation.error.errors,
+      });
+      return;
+    }
+
+    await db.collection('toolsTechnologies').doc(id).update(validation.data);
+    
+    res.json({
+      success: true,
+      data: { id, ...validation.data },
+      message: 'Tool/Technology updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating tool/technology:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update tool/technology',
+    });
+  }
+});
+
+router.delete('/tools/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    await db.collection('toolsTechnologies').doc(id).delete();
+    
+    res.json({
+      success: true,
+      message: 'Tool/Technology deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting tool/technology:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete tool/technology',
+    });
+  }
+});
+
 // Bulk update for reordering
 router.put('/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -226,9 +320,13 @@ router.put('/reorder', authenticateToken, async (req: AuthenticatedRequest, res:
     const batch = db.batch();
     
     if (categories && Array.isArray(categories)) {
-      categories.forEach((item: { id: string; order: number }) => {
+      categories.forEach((item: { id: string; order: number; featured?: boolean }) => {
         const ref = db.collection('skillCategories').doc(item.id);
-        batch.update(ref, { order: item.order });
+        const updateData: Record<string, unknown> = { order: item.order };
+        if (typeof item.featured === 'boolean') {
+          updateData.featured = item.featured;
+        }
+        batch.update(ref, updateData);
       });
     }
     
