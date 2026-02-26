@@ -23,12 +23,13 @@ export interface Stat {
 
 export interface SkillCategory {
   id: string;
-  category: 'frontend' | 'backend';
+  category: 'frontend' | 'backend' | 'database' | 'devops' | 'mobile' | 'ai_ml' | 'security' | 'tools';
   title: string;
   icon: string;
   description: string;
   order: number;
   skills: SkillItem[];
+  featured?: boolean;
 }
 
 export interface SkillItem {
