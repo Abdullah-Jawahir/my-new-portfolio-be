@@ -20,8 +20,45 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+// Helper function to check and add items (non-destructive)
+async function seedCollection<T extends Record<string, unknown>>(
+  collectionName: string,
+  items: T[],
+  uniqueField: keyof T,
+  displayField?: keyof T
+): Promise<{ added: number; skipped: number }> {
+  const existingSnapshot = await db.collection(collectionName).get();
+  const existingValues = new Set(
+    existingSnapshot.docs.map(doc => {
+      const val = doc.data()[uniqueField as string];
+      return typeof val === 'string' ? val.toLowerCase().trim() : val;
+    })
+  );
+
+  let added = 0;
+  let skipped = 0;
+
+  for (const item of items) {
+    const checkValue = item[uniqueField];
+    const normalizedValue = typeof checkValue === 'string' ? checkValue.toLowerCase().trim() : checkValue;
+    
+    if (existingValues.has(normalizedValue)) {
+      const displayValue = displayField ? item[displayField] : item[uniqueField];
+      console.log(`  Skipped (exists): ${String(displayValue).substring(0, 40)}`);
+      skipped++;
+    } else {
+      await db.collection(collectionName).add(item);
+      const displayValue = displayField ? item[displayField] : item[uniqueField];
+      console.log(`  Added: ${String(displayValue).substring(0, 40)}`);
+      added++;
+    }
+  }
+
+  return { added, skipped };
+}
+
 const seedExperienceData = async () => {
-  console.log('Starting experience data seed...');
+  console.log('Starting experience data seed (non-destructive)...\n');
 
   // Work Experience
   const workExperience = [
@@ -48,59 +85,60 @@ const seedExperienceData = async () => {
       location: 'Sri Lanka',
       period: '2022 - 2023',
       type: 'Full-time',
-      description: 'Contributed to the development of enterprise web applications, focusing on frontend development and API integration.',
+      description: 'Contributed to the development of web applications and gained hands-on experience with modern development practices.',
       responsibilities: [
         'Developed and maintained frontend components using React',
-        'Collaborated with backend team for API integration',
+        'Collaborated with senior developers on backend features',
         'Participated in code reviews and team discussions',
-        'Fixed bugs and improved application performance',
-        'Documented technical specifications and user guides'
+        'Assisted in debugging and troubleshooting issues'
       ],
-      technologies: ['React', 'JavaScript', 'HTML/CSS', 'Bootstrap', 'Git'],
+      technologies: ['React', 'JavaScript', 'HTML', 'CSS', 'Node.js', 'MySQL'],
       order: 1,
     }
   ];
 
-  for (const job of workExperience) {
-    await db.collection('workExperience').add({
-      ...job,
-      createdAt: new Date(),
-    });
-  }
-  console.log('Work experience seeded');
+  console.log('Seeding Work Experience...');
+  const workResult = await seedCollection(
+    'workExperience',
+    workExperience,
+    'title' as keyof typeof workExperience[0],
+    'title' as keyof typeof workExperience[0]
+  );
+  console.log(`Work Experience: ${workResult.added} added, ${workResult.skipped} existing\n`);
 
   // Certifications
   const certifications = [
     {
-      title: 'Full Stack Web Development',
-      issuer: 'Online Learning Platform',
+      title: 'Meta Front-End Developer Professional Certificate',
+      issuer: 'Meta (Coursera)',
       date: '2023',
       credentialUrl: '',
       order: 0,
     },
     {
-      title: 'React Developer Certification',
-      issuer: 'Meta',
+      title: 'JavaScript Algorithms and Data Structures',
+      issuer: 'freeCodeCamp',
       date: '2023',
       credentialUrl: '',
       order: 1,
     },
     {
-      title: 'JavaScript Algorithms and Data Structures',
+      title: 'Responsive Web Design',
       issuer: 'freeCodeCamp',
       date: '2022',
       credentialUrl: '',
       order: 2,
-    }
+    },
   ];
 
-  for (const cert of certifications) {
-    await db.collection('certifications').add({
-      ...cert,
-      createdAt: new Date(),
-    });
-  }
-  console.log('Certifications seeded');
+  console.log('Seeding Certifications...');
+  const certResult = await seedCollection(
+    'certifications',
+    certifications,
+    'title' as keyof typeof certifications[0],
+    'title' as keyof typeof certifications[0]
+  );
+  console.log(`Certifications: ${certResult.added} added, ${certResult.skipped} existing\n`);
 
   // Core Values
   const coreValues = [
@@ -130,10 +168,14 @@ const seedExperienceData = async () => {
     }
   ];
 
-  for (const value of coreValues) {
-    await db.collection('coreValues').add(value);
-  }
-  console.log('Core values seeded');
+  console.log('Seeding Core Values...');
+  const valuesResult = await seedCollection(
+    'coreValues',
+    coreValues,
+    'title' as keyof typeof coreValues[0],
+    'title' as keyof typeof coreValues[0]
+  );
+  console.log(`Core Values: ${valuesResult.added} added, ${valuesResult.skipped} existing\n`);
 
   // Interests
   const interests = [
@@ -145,10 +187,14 @@ const seedExperienceData = async () => {
     { icon: 'Plane', label: 'Travel', order: 5 },
   ];
 
-  for (const interest of interests) {
-    await db.collection('interests').add(interest);
-  }
-  console.log('Interests seeded');
+  console.log('Seeding Interests...');
+  const interestsResult = await seedCollection(
+    'interests',
+    interests,
+    'label' as keyof typeof interests[0],
+    'label' as keyof typeof interests[0]
+  );
+  console.log(`Interests: ${interestsResult.added} added, ${interestsResult.skipped} existing\n`);
 
   // Learning Goals
   const learningGoals = [
@@ -160,10 +206,14 @@ const seedExperienceData = async () => {
     { name: 'AI/ML Basics', progress: 30, order: 5 },
   ];
 
-  for (const goal of learningGoals) {
-    await db.collection('learningGoals').add(goal);
-  }
-  console.log('Learning goals seeded');
+  console.log('Seeding Learning Goals...');
+  const goalsResult = await seedCollection(
+    'learningGoals',
+    learningGoals,
+    'name' as keyof typeof learningGoals[0],
+    'name' as keyof typeof learningGoals[0]
+  );
+  console.log(`Learning Goals: ${goalsResult.added} added, ${goalsResult.skipped} existing\n`);
 
   // Fun Facts
   const funFacts = [
@@ -175,16 +225,28 @@ const seedExperienceData = async () => {
     { emoji: '🎮', fact: 'Gaming enthusiast in spare time', order: 5 },
   ];
 
-  for (const fact of funFacts) {
-    await db.collection('funFacts').add(fact);
-  }
-  console.log('Fun facts seeded');
+  console.log('Seeding Fun Facts...');
+  const factsResult = await seedCollection(
+    'funFacts',
+    funFacts,
+    'fact' as keyof typeof funFacts[0],
+    'fact' as keyof typeof funFacts[0]
+  );
+  console.log(`Fun Facts: ${factsResult.added} added, ${factsResult.skipped} existing\n`);
 
-  console.log('Experience data seed completed successfully!');
-  process.exit(0);
+  console.log('✅ Experience data seed completed successfully!');
+  console.log('\nSummary:');
+  console.log(`  - Work Experience: ${workResult.added} added, ${workResult.skipped} existing`);
+  console.log(`  - Certifications: ${certResult.added} added, ${certResult.skipped} existing`);
+  console.log(`  - Core Values: ${valuesResult.added} added, ${valuesResult.skipped} existing`);
+  console.log(`  - Interests: ${interestsResult.added} added, ${interestsResult.skipped} existing`);
+  console.log(`  - Learning Goals: ${goalsResult.added} added, ${goalsResult.skipped} existing`);
+  console.log(`  - Fun Facts: ${factsResult.added} added, ${factsResult.skipped} existing`);
 };
 
-seedExperienceData().catch((error) => {
-  console.error('Error seeding experience data:', error);
-  process.exit(1);
-});
+seedExperienceData()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error('Error seeding experience data:', error);
+    process.exit(1);
+  });
