@@ -417,6 +417,7 @@ async function executeApprovedRequest(request: PendingRequest): Promise<{ succes
       learningGoal: 'learningGoals',
       funFact: 'funFacts',
       faq: 'faqs',
+      message: 'messages',
     };
 
     const collection = collectionMap[request.resourceType];
@@ -443,6 +444,16 @@ async function executeApprovedRequest(request: PendingRequest): Promise<{ succes
         return { success: true, message: `Updated ${request.resourceType}: ${request.resourceId}` };
       }
       case 'DELETE': {
+        // Handle bulk delete for messages
+        if (request.resourceType === 'message' && request.data?.ids && Array.isArray(request.data.ids)) {
+          const batch = db.batch();
+          for (const id of request.data.ids as string[]) {
+            batch.delete(db.collection(collection).doc(id));
+          }
+          await batch.commit();
+          return { success: true, message: `Deleted ${(request.data.ids as string[]).length} messages` };
+        }
+        
         if (!request.resourceId) {
           return { success: false, message: 'Resource ID required for delete' };
         }
