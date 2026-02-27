@@ -116,7 +116,12 @@ export const requirePermission = (page: AdminPage, permission: Permission) => {
 
     const pagePermission = req.permissions.find((p: PagePermission) => p.page === page);
     
+    // Debug log to see what permissions the backend has
+    console.log(`[Permission Check] User: ${req.user?.email}, Page: ${page}, Required: ${permission}`);
+    console.log(`[Permission Check] User's permissions for ${page}:`, pagePermission?.permissions || 'NONE');
+    
     if (!pagePermission || !pagePermission.permissions.includes(permission)) {
+      console.log(`[Permission DENIED] User ${req.user?.email} lacks ${permission} for ${page}`);
       if (permission === 'VIEW') {
         res.status(403).json({
           success: false,
@@ -125,12 +130,14 @@ export const requirePermission = (page: AdminPage, permission: Permission) => {
       } else {
         res.status(403).json({
           success: false,
-          error: `Access denied. You do not have ${permission} permission for ${page}. A request has been required.`,
+          error: `You don't have ${permission} permission for this page. Your permissions may have been updated - please refresh the page.`,
           data: { requiresApproval: true, page, permission },
         });
       }
       return;
     }
+    
+    console.log(`[Permission GRANTED] User ${req.user?.email} has ${permission} for ${page}`);
 
     next();
   };
