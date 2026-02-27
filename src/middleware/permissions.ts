@@ -140,29 +140,14 @@ export const requirePermission = (page: AdminPage, permission: Permission) => {
         res.status(403).json({
           success: false,
           error: `You don't have ${permission} permission for this page.`,
-          data: { requiresApproval: true, page, permission },
+          data: { requiresApproval: false, page, permission },
         });
       }
       return;
     }
     
-    // For sub-admins with UPDATE or DELETE permissions, require them to submit a request
-    // Only VIEW and CREATE are allowed directly (CREATE adds new items, UPDATE/DELETE modify existing)
-    if ((permission === 'UPDATE' || permission === 'DELETE') && req.isSubAdmin) {
-      console.log(`[Permission REQUIRES APPROVAL] User ${req.user?.email} has ${permission} for ${page} but needs core admin approval`);
-      res.status(403).json({
-        success: false,
-        error: `You have ${permission} permission, but changes require core admin approval. Please submit a request.`,
-        data: { 
-          requiresApproval: true, 
-          page, 
-          permission,
-          hasPermission: true,
-        },
-      });
-      return;
-    }
-    
+    // Sub-admins with UPDATE/DELETE permissions can proceed - the frontend will handle
+    // submitting these as approval requests instead of direct updates
     console.log(`[Permission GRANTED] User ${req.user?.email} has ${permission} for ${page}`);
 
     next();
