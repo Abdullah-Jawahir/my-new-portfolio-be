@@ -46,22 +46,32 @@ export const authenticateWithPermissions = async (
       return;
     }
 
+    // Query sub-admins - avoid compound query issues by fetching all and filtering client-side
     const subAdminSnapshot = await db.collection(SUB_ADMINS_COLLECTION)
       .where('email', '==', userEmail)
-      .where('isActive', '==', true)
-      .limit(1)
       .get();
 
-    if (!subAdminSnapshot.empty) {
-      const subAdminDoc = subAdminSnapshot.docs[0];
-      const subAdmin = { id: subAdminDoc.id, ...subAdminDoc.data() } as SubAdmin;
+    // Filter for active sub-admins on the client side
+    const activeSubAdmin = subAdminSnapshot.docs.find(doc => {
+      const data = doc.data();
+      return data.isActive === true;
+    });
+
+    if (activeSubAdmin) {
+      const subAdminData = activeSubAdmin.data();
+      const subAdmin = { id: activeSubAdmin.id, ...subAdminData } as SubAdmin;
+      
+      // Debug: Log the raw data from Firestore
+      console.log(`[Auth] Sub-admin found: ${userEmail}`);
+      console.log(`[Auth] isActive: ${subAdminData.isActive}`);
+      console.log(`[Auth] Raw pagePermissions from DB:`, JSON.stringify(subAdminData.pagePermissions));
       
       req.isCoreAdmin = false;
       req.isSubAdmin = true;
       req.subAdmin = subAdmin;
-      req.permissions = subAdmin.pagePermissions;
+      req.permissions = subAdmin.pagePermissions || [];
 
-      await subAdminDoc.ref.update({ lastLoginAt: new Date() });
+      await activeSubAdmin.ref.update({ lastLoginAt: new Date() });
       
       next();
       return;
@@ -116,9 +126,8 @@ export const requirePermission = (page: AdminPage, permission: Permission) => {
 
     const pagePermission = req.permissions.find((p: PagePermission) => p.page === page);
     
-    // Debug log to see what permissions the backend has
     console.log(`[Permission Check] User: ${req.user?.email}, Page: ${page}, Required: ${permission}`);
-    console.log(`[Permission Check] User's permissions for ${page}:`, pagePermission?.permissions || 'NONE');
+    console.log(`[Permission Check] User's permissions for ${page}:`, pagePermission?.permissions || []);
     
     if (!pagePermission || !pagePermission.permissions.includes(permission)) {
       console.log(`[Permission DENIED] User ${req.user?.email} lacks ${permission} for ${page}`);
@@ -130,10 +139,27 @@ export const requirePermission = (page: AdminPage, permission: Permission) => {
       } else {
         res.status(403).json({
           success: false,
-          error: `You don't have ${permission} permission for this page. Your permissions may have been updated - please refresh the page.`,
+          error: `You don't have ${permission} permission for this page.`,
           data: { requiresApproval: true, page, permission },
         });
       }
+      return;
+    }
+    
+    // For sub-admins with UPDATE or DELETE permissions, require them to submit a request
+    // Only VIEW and CREATE are allowed directly (CREATE adds new items, UPDATE/DELETE modify existing)
+    if ((permission === 'UPDATE' || permission === 'DELETE') && req.isSubAdmin) {
+      console.log(`[Permission REQUIRES APPROVAL] User ${req.user?.email} has ${permission} for ${page} but needs core admin approval`);
+      res.status(403).json({
+        success: false,
+        error: `You have ${permission} permission, but changes require core admin approval. Please submit a request.`,
+        data: { 
+          requiresApproval: true, 
+          page, 
+          permission,
+          hasPermission: true,
+        },
+      });
       return;
     }
     
