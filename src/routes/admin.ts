@@ -1,12 +1,14 @@
 import { Router, Response } from 'express';
 import { db, auth } from '../config/firebase';
 import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions } from '../middleware/permissions';
+import { AuthenticatedRequest, AuthenticatedRequestWithPermissions, SubAdmin, Permission, AdminPage } from '../types';
 
 const router = Router();
 
 const ADMIN_CONFIG_DOC = 'config';
 const ADMIN_COLLECTION = 'adminConfig';
+const SUB_ADMINS_COLLECTION = 'subAdmins';
 
 // The only allowed admin email - hardcoded for security
 const ALLOWED_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'mjabdullah33@gmail.com';
@@ -33,7 +35,7 @@ router.get('/status', async (req, res: Response) => {
   }
 });
 
-// GET /api/admin/verify - Verify if current user is admin (authenticated)
+// GET /api/admin/verify - Verify if current user is admin or sub-admin (authenticated)
 router.get('/verify', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user;
@@ -48,54 +50,100 @@ router.get('/verify', authenticateToken, async (req: AuthenticatedRequest, res: 
 
     // Get user details from Firebase Auth
     const userRecord = await auth.getUser(user.uid);
-    const userEmail = userRecord.email?.toLowerCase();
+    const userEmail = userRecord.email?.toLowerCase() || '';
     const allowedEmail = ALLOWED_ADMIN_EMAIL.toLowerCase();
     
-    // Check if user's email matches the allowed admin email
-    const isAdmin = userEmail === allowedEmail;
+    // Check if user is the core admin
+    const isCoreAdmin = userEmail === allowedEmail;
     
-    if (!isAdmin) {
-      res.status(403).json({
-        success: false,
-        error: 'Access denied. You are not the authorized admin.',
+    if (isCoreAdmin) {
+      // User is the core admin - update or create admin config
+      const configDoc = await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).get();
+      
+      if (!configDoc.exists) {
+        await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).set({
+          adminUid: user.uid,
+          adminEmail: userRecord.email,
+          adminName: userRecord.displayName || null,
+          adminPhoto: userRecord.photoURL || null,
+          provider: userRecord.providerData[0]?.providerId || 'unknown',
+          registeredAt: new Date(),
+          lastLoginAt: new Date(),
+        });
+      } else {
+        await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).update({
+          lastLoginAt: new Date(),
+          adminUid: user.uid,
+          adminName: userRecord.displayName || configDoc.data()?.adminName,
+          adminPhoto: userRecord.photoURL || configDoc.data()?.adminPhoto,
+        });
+      }
+
+      const allPermissions: Permission[] = ['VIEW', 'CREATE', 'UPDATE', 'DELETE'];
+      const adminPages: AdminPage[] = ['dashboard', 'profile', 'about', 'skills', 'projects', 'education', 'experience', 'faqs', 'messages'];
+
+      res.json({
+        success: true,
         data: {
-          isAdmin: false,
-          canRegister: false,
+          isAdmin: true,
+          isCoreAdmin: true,
+          isSubAdmin: false,
+          adminEmail: userRecord.email,
+          adminName: userRecord.displayName,
+          pagePermissions: adminPages.map(page => ({
+            page,
+            permissions: allPermissions,
+          })),
+          canAccessTeamManagement: true,
+          canAccessRequests: true,
         },
       });
       return;
     }
 
-    // User is the admin - update or create admin config
-    const configDoc = await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).get();
-    
-    if (!configDoc.exists) {
-      // Auto-register this admin
-      await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).set({
-        adminUid: user.uid,
-        adminEmail: userRecord.email,
-        adminName: userRecord.displayName || null,
-        adminPhoto: userRecord.photoURL || null,
-        provider: userRecord.providerData[0]?.providerId || 'unknown',
-        registeredAt: new Date(),
+    // Check if user is a sub-admin
+    const subAdminSnapshot = await db.collection(SUB_ADMINS_COLLECTION)
+      .where('email', '==', userEmail)
+      .where('isActive', '==', true)
+      .limit(1)
+      .get();
+
+    if (!subAdminSnapshot.empty) {
+      const subAdminDoc = subAdminSnapshot.docs[0];
+      const subAdmin = { id: subAdminDoc.id, ...subAdminDoc.data() } as SubAdmin;
+
+      // Update last login and user info
+      await subAdminDoc.ref.update({
         lastLoginAt: new Date(),
+        name: userRecord.displayName || subAdmin.name,
+        photoUrl: userRecord.photoURL || subAdmin.photoUrl,
+        uid: user.uid,
       });
-    } else {
-      // Update last login
-      await db.collection(ADMIN_COLLECTION).doc(ADMIN_CONFIG_DOC).update({
-        lastLoginAt: new Date(),
-        adminUid: user.uid, // Update UID in case it changed (e.g., different provider)
-        adminName: userRecord.displayName || configDoc.data()?.adminName,
-        adminPhoto: userRecord.photoURL || configDoc.data()?.adminPhoto,
+
+      res.json({
+        success: true,
+        data: {
+          isAdmin: true,
+          isCoreAdmin: false,
+          isSubAdmin: true,
+          subAdminId: subAdmin.id,
+          adminEmail: userRecord.email,
+          adminName: userRecord.displayName || subAdmin.name,
+          pagePermissions: subAdmin.pagePermissions,
+          canAccessTeamManagement: false,
+          canAccessRequests: false,
+        },
       });
+      return;
     }
 
-    res.json({
-      success: true,
+    // User is neither core admin nor sub-admin
+    res.status(403).json({
+      success: false,
+      error: 'Access denied. You are not authorized to access the admin panel.',
       data: {
-        isAdmin: true,
-        adminEmail: userRecord.email,
-        adminName: userRecord.displayName,
+        isAdmin: false,
+        canRegister: false,
       },
     });
   } catch (error) {

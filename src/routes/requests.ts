@@ -1,0 +1,439 @@
+import { Router, Response } from 'express';
+import { db } from '../config/firebase';
+import { authenticateWithPermissions, requireCoreAdmin } from '../middleware/permissions';
+import { 
+  AuthenticatedRequestWithPermissions, 
+  PendingRequest,
+  RequestAction,
+  AdminPage,
+  RequestStatus
+} from '../types';
+import { z } from 'zod';
+
+const router = Router();
+
+const PENDING_REQUESTS_COLLECTION = 'pendingRequests';
+
+const createRequestSchema = z.object({
+  action: z.enum(['CREATE', 'UPDATE', 'DELETE']),
+  resourceType: z.string(),
+  resourceId: z.string().optional(),
+  resourceName: z.string().optional(),
+  page: z.enum(['dashboard', 'profile', 'about', 'skills', 'projects', 'education', 'experience', 'faqs', 'messages']),
+  data: z.record(z.unknown()),
+  previousData: z.record(z.unknown()).optional(),
+  reason: z.string().optional(),
+});
+
+const processRequestSchema = z.object({
+  status: z.enum(['approved', 'rejected']),
+  rejectionReason: z.string().optional(),
+});
+
+// GET /api/requests - Get all pending requests (Core Admin Only)
+router.get('/', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    const status = req.query.status as RequestStatus | undefined;
+    
+    let query = db.collection(PENDING_REQUESTS_COLLECTION)
+      .orderBy('createdAt', 'desc');
+    
+    if (status) {
+      query = db.collection(PENDING_REQUESTS_COLLECTION)
+        .where('status', '==', status)
+        .orderBy('createdAt', 'desc');
+    }
+
+    const requestsSnapshot = await query.get();
+    
+    const requests: PendingRequest[] = requestsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate(),
+      processedAt: doc.data().processedAt?.toDate(),
+    })) as PendingRequest[];
+
+    const pendingCount = requests.filter(r => r.status === 'pending').length;
+    const approvedCount = requests.filter(r => r.status === 'approved').length;
+    const rejectedCount = requests.filter(r => r.status === 'rejected').length;
+
+    res.json({
+      success: true,
+      data: {
+        requests,
+        stats: {
+          total: requests.length,
+          pending: pendingCount,
+          approved: approvedCount,
+          rejected: rejectedCount,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching requests:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch requests',
+    });
+  }
+});
+
+// GET /api/requests/my-requests - Get current sub-admin's requests
+router.get('/my-requests', authenticateWithPermissions, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    if (req.isCoreAdmin) {
+      res.json({
+        success: true,
+        data: {
+          requests: [],
+          message: 'Core admin does not have pending requests',
+        },
+      });
+      return;
+    }
+
+    if (!req.isSubAdmin || !req.subAdmin) {
+      res.status(403).json({
+        success: false,
+        error: 'Access denied',
+      });
+      return;
+    }
+
+    const requestsSnapshot = await db.collection(PENDING_REQUESTS_COLLECTION)
+      .where('subAdminId', '==', req.subAdmin.id)
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    const requests: PendingRequest[] = requestsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate(),
+      processedAt: doc.data().processedAt?.toDate(),
+    })) as PendingRequest[];
+
+    res.json({
+      success: true,
+      data: { requests },
+    });
+  } catch (error) {
+    console.error('Error fetching my requests:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch requests',
+    });
+  }
+});
+
+// POST /api/requests - Create a new request (Sub-Admin Only)
+router.post('/', authenticateWithPermissions, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    if (req.isCoreAdmin) {
+      res.status(400).json({
+        success: false,
+        error: 'Core admin does not need to create requests',
+      });
+      return;
+    }
+
+    if (!req.isSubAdmin || !req.subAdmin) {
+      res.status(403).json({
+        success: false,
+        error: 'Only sub-admins can create requests',
+      });
+      return;
+    }
+
+    const validation = createRequestSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: validation.error.errors[0].message,
+      });
+      return;
+    }
+
+    const { action, resourceType, resourceId, resourceName, page, data, previousData, reason } = validation.data;
+
+    const existingRequest = await db.collection(PENDING_REQUESTS_COLLECTION)
+      .where('subAdminId', '==', req.subAdmin.id)
+      .where('status', '==', 'pending')
+      .where('action', '==', action)
+      .where('resourceType', '==', resourceType)
+      .where('page', '==', page)
+      .limit(1)
+      .get();
+
+    if (!existingRequest.empty && resourceId) {
+      const existing = existingRequest.docs[0].data();
+      if (existing.resourceId === resourceId) {
+        res.status(400).json({
+          success: false,
+          error: 'A similar request is already pending',
+        });
+        return;
+      }
+    }
+
+    const pendingRequest: Omit<PendingRequest, 'id'> = {
+      subAdminId: req.subAdmin.id,
+      subAdminEmail: req.subAdmin.email,
+      subAdminName: req.subAdmin.name,
+      action: action as RequestAction,
+      resourceType,
+      resourceId,
+      resourceName,
+      page: page as AdminPage,
+      data,
+      previousData,
+      status: 'pending',
+      reason,
+      createdAt: new Date(),
+    };
+
+    const docRef = await db.collection(PENDING_REQUESTS_COLLECTION).add(pendingRequest);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: docRef.id,
+        ...pendingRequest,
+      },
+      message: 'Request submitted successfully. Waiting for core admin approval.',
+    });
+  } catch (error) {
+    console.error('Error creating request:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create request',
+    });
+  }
+});
+
+// PUT /api/requests/:id/process - Approve or reject a request (Core Admin Only)
+router.put('/:id/process', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const validation = processRequestSchema.safeParse(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: validation.error.errors[0].message,
+      });
+      return;
+    }
+
+    const { status, rejectionReason } = validation.data;
+
+    const requestRef = db.collection(PENDING_REQUESTS_COLLECTION).doc(id);
+    const requestDoc = await requestRef.get();
+
+    if (!requestDoc.exists) {
+      res.status(404).json({
+        success: false,
+        error: 'Request not found',
+      });
+      return;
+    }
+
+    const requestData = requestDoc.data() as PendingRequest;
+
+    if (requestData.status !== 'pending') {
+      res.status(400).json({
+        success: false,
+        error: 'This request has already been processed',
+      });
+      return;
+    }
+
+    const updateData: Partial<PendingRequest> = {
+      status: status as RequestStatus,
+      processedAt: new Date(),
+      processedBy: req.user!.uid,
+    };
+
+    if (status === 'rejected' && rejectionReason) {
+      updateData.rejectionReason = rejectionReason;
+    }
+
+    await requestRef.update(updateData);
+
+    let actionResult = null;
+    if (status === 'approved') {
+      actionResult = await executeApprovedRequest(requestData);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status,
+        actionResult,
+      },
+      message: status === 'approved' 
+        ? 'Request approved and executed successfully' 
+        : 'Request rejected',
+    });
+  } catch (error) {
+    console.error('Error processing request:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process request',
+    });
+  }
+});
+
+// DELETE /api/requests/:id - Delete a request (Core Admin or request owner)
+router.delete('/:id', authenticateWithPermissions, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    const requestRef = db.collection(PENDING_REQUESTS_COLLECTION).doc(id);
+    const requestDoc = await requestRef.get();
+
+    if (!requestDoc.exists) {
+      res.status(404).json({
+        success: false,
+        error: 'Request not found',
+      });
+      return;
+    }
+
+    const requestData = requestDoc.data() as PendingRequest;
+
+    if (!req.isCoreAdmin) {
+      if (!req.isSubAdmin || !req.subAdmin || req.subAdmin.id !== requestData.subAdminId) {
+        res.status(403).json({
+          success: false,
+          error: 'You can only delete your own requests',
+        });
+        return;
+      }
+
+      if (requestData.status !== 'pending') {
+        res.status(400).json({
+          success: false,
+          error: 'Cannot delete processed requests',
+        });
+        return;
+      }
+    }
+
+    await requestRef.delete();
+
+    res.json({
+      success: true,
+      message: 'Request deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting request:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete request',
+    });
+  }
+});
+
+// GET /api/requests/stats - Get request statistics (Core Admin Only)
+router.get('/stats', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    const requestsSnapshot = await db.collection(PENDING_REQUESTS_COLLECTION).get();
+    
+    let pending = 0;
+    let approved = 0;
+    let rejected = 0;
+    const byPage: Record<string, number> = {};
+    const byAction: Record<string, number> = {};
+
+    requestsSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      
+      if (data.status === 'pending') pending++;
+      else if (data.status === 'approved') approved++;
+      else if (data.status === 'rejected') rejected++;
+
+      byPage[data.page] = (byPage[data.page] || 0) + 1;
+      byAction[data.action] = (byAction[data.action] || 0) + 1;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        total: requestsSnapshot.size,
+        pending,
+        approved,
+        rejected,
+        byPage,
+        byAction,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching request stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch request statistics',
+    });
+  }
+});
+
+async function executeApprovedRequest(request: PendingRequest): Promise<{ success: boolean; message: string }> {
+  try {
+    const collectionMap: Record<string, string> = {
+      profile: 'profile',
+      stat: 'stats',
+      contactInfo: 'contactInfo',
+      socialLink: 'socialLinks',
+      skillCategory: 'skillCategories',
+      additionalSkill: 'additionalSkills',
+      toolTechnology: 'toolsTechnologies',
+      project: 'projects',
+      education: 'education',
+      workExperience: 'workExperience',
+      certification: 'certifications',
+      coreValue: 'coreValues',
+      interest: 'interests',
+      learningGoal: 'learningGoals',
+      funFact: 'funFacts',
+      faq: 'faqs',
+    };
+
+    const collection = collectionMap[request.resourceType];
+    if (!collection) {
+      return { success: false, message: `Unknown resource type: ${request.resourceType}` };
+    }
+
+    switch (request.action) {
+      case 'CREATE': {
+        const docRef = await db.collection(collection).add({
+          ...request.data,
+          createdAt: new Date(),
+        });
+        return { success: true, message: `Created ${request.resourceType} with ID: ${docRef.id}` };
+      }
+      case 'UPDATE': {
+        if (!request.resourceId) {
+          return { success: false, message: 'Resource ID required for update' };
+        }
+        await db.collection(collection).doc(request.resourceId).update({
+          ...request.data,
+          updatedAt: new Date(),
+        });
+        return { success: true, message: `Updated ${request.resourceType}: ${request.resourceId}` };
+      }
+      case 'DELETE': {
+        if (!request.resourceId) {
+          return { success: false, message: 'Resource ID required for delete' };
+        }
+        await db.collection(collection).doc(request.resourceId).delete();
+        return { success: true, message: `Deleted ${request.resourceType}: ${request.resourceId}` };
+      }
+      default:
+        return { success: false, message: 'Unknown action' };
+    }
+  } catch (error) {
+    console.error('Error executing approved request:', error);
+    return { success: false, message: 'Failed to execute request' };
+  }
+}
+
+export default router;
