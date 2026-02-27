@@ -169,6 +169,11 @@ router.post('/invite', authenticateWithPermissions, requireCoreAdmin, async (req
     const token = generateInviteToken();
     const expiresAt = getExpirationDate(7);
     
+    // Filter out pages with empty permissions arrays
+    const filteredPermissions = pagePermissions 
+      ? pagePermissions.filter(p => p.permissions && p.permissions.length > 0)
+      : DEFAULT_VIEW_PERMISSIONS;
+    
     const invitation: Omit<SubAdminInvitation, 'id'> = {
       email: inviteeEmail,
       invitedBy: req.user!.uid,
@@ -177,7 +182,7 @@ router.post('/invite', authenticateWithPermissions, requireCoreAdmin, async (req
       token,
       expiresAt,
       createdAt: new Date(),
-      pagePermissions: pagePermissions || DEFAULT_VIEW_PERMISSIONS,
+      pagePermissions: filteredPermissions.length > 0 ? filteredPermissions : DEFAULT_VIEW_PERMISSIONS,
     };
 
     const docRef = await db.collection(INVITATIONS_COLLECTION).add(invitation);
@@ -291,6 +296,11 @@ router.post('/invite/accept/:token', authenticateToken, async (req: Authenticate
 
     const userRecord = await auth.getUser(req.user!.uid);
 
+    // Filter out pages with empty permissions arrays
+    const filteredPermissions = (invitation.pagePermissions || []).filter(
+      (p: { permissions?: string[] }) => p.permissions && p.permissions.length > 0
+    );
+
     const subAdmin: Omit<SubAdmin, 'id'> = {
       uid: req.user!.uid,
       email: userEmail,
@@ -299,7 +309,7 @@ router.post('/invite/accept/:token', authenticateToken, async (req: Authenticate
       invitedBy: invitation.invitedBy,
       invitedByEmail: invitation.invitedByEmail,
       isActive: true,
-      pagePermissions: invitation.pagePermissions,
+      pagePermissions: filteredPermissions,
       createdAt: new Date(),
       lastLoginAt: new Date(),
     };
@@ -384,8 +394,13 @@ router.put('/:id/permissions', authenticateWithPermissions, requireCoreAdmin, as
       return;
     }
 
+    // Filter out pages with empty permissions arrays
+    const filteredPermissions = validation.data.pagePermissions.filter(
+      p => p.permissions && p.permissions.length > 0
+    );
+
     await subAdminRef.update({
-      pagePermissions: validation.data.pagePermissions,
+      pagePermissions: filteredPermissions,
     });
 
     res.json({
