@@ -20,7 +20,7 @@ export interface Stat {
   order: number;
   featured?: boolean;
   isDynamic?: boolean;
-  dynamicSource?: 'projects' | 'certifications' | 'technologies' | 'skills' | 'experience';
+  dynamicSource?: 'projects' | 'certifications' | 'technologies' | 'skills' | 'experience' | 'yearsExperience';
 }
 
 export interface SkillCategory {
