@@ -76,6 +76,18 @@ async function getDynamicStatValue(source: string): Promise<number> {
         const workSnapshot = await db.collection('workExperience').get();
         return workSnapshot.size;
       }
+      case 'yearsExperience': {
+        const profileDoc = await db.collection('profile').doc('main').get();
+        if (profileDoc.exists) {
+          const data = profileDoc.data();
+          const years = data?.yearsExperience;
+          if (years) {
+            const numericValue = parseInt(String(years).replace(/\D/g, ''), 10);
+            return isNaN(numericValue) ? 0 : numericValue;
+          }
+        }
+        return 0;
+      }
       default:
         return 0;
     }
