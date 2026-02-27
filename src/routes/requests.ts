@@ -182,21 +182,24 @@ router.post('/', authenticateWithPermissions, async (req: AuthenticatedRequestWi
       return;
     }
 
-    const pendingRequest: Omit<PendingRequest, 'id'> = {
+    // Build the request object, filtering out undefined values
+    const pendingRequest: Record<string, unknown> = {
       subAdminId: req.subAdmin.id,
       subAdminEmail: req.subAdmin.email,
       subAdminName: req.subAdmin.name,
       action: action as RequestAction,
       resourceType,
-      resourceId,
-      resourceName,
       page: page as AdminPage,
       data,
-      previousData,
       status: 'pending',
-      reason,
       createdAt: new Date(),
     };
+
+    // Only add optional fields if they have values
+    if (resourceId) pendingRequest.resourceId = resourceId;
+    if (resourceName) pendingRequest.resourceName = resourceName;
+    if (previousData) pendingRequest.previousData = previousData;
+    if (reason) pendingRequest.reason = reason;
 
     const docRef = await db.collection(PENDING_REQUESTS_COLLECTION).add(pendingRequest);
 
@@ -385,6 +388,18 @@ router.get('/stats', authenticateWithPermissions, requireCoreAdmin, async (req: 
 
 async function executeApprovedRequest(request: PendingRequest): Promise<{ success: boolean; message: string }> {
   try {
+    // Special handling for aboutProfile - updates profile document with specific fields
+    if (request.resourceType === 'aboutProfile') {
+      if (request.action === 'UPDATE') {
+        await db.collection('profile').doc('main').set({
+          ...request.data,
+          updatedAt: new Date(),
+        }, { merge: true });
+        return { success: true, message: 'Updated about profile content' };
+      }
+      return { success: false, message: 'Invalid action for aboutProfile' };
+    }
+
     const collectionMap: Record<string, string> = {
       profile: 'profile',
       stat: 'stats',
