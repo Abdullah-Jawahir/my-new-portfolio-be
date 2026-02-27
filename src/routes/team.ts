@@ -1,8 +1,10 @@
 import { Router, Response } from 'express';
 import { db, auth } from '../config/firebase';
 import { authenticateWithPermissions, requireCoreAdmin } from '../middleware/permissions';
+import { authenticateToken } from '../middleware/auth';
 import { 
   AuthenticatedRequestWithPermissions, 
+  AuthenticatedRequest,
   SubAdminInvitation, 
   SubAdmin,
   PagePermission,
@@ -234,8 +236,8 @@ router.get('/invite/verify/:token', async (req, res: Response) => {
   }
 });
 
-// POST /api/team/invite/accept/:token - Accept invitation (Authenticated)
-router.post('/invite/accept/:token', authenticateWithPermissions, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+// POST /api/team/invite/accept/:token - Accept invitation (Authenticated - no admin check)
+router.post('/invite/accept/:token', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { token } = req.params;
 
