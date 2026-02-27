@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../config/firebase';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 import { z } from 'zod';
 
 const router = Router();
@@ -74,7 +74,7 @@ router.get('/:id', async (req, res: Response) => {
 });
 
 // POST /api/projects - Create project
-router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', authenticateWithPermissions, requirePermission('projects', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = projectSchema.safeParse(req.body);
     
@@ -110,7 +110,7 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 });
 
 // PUT /api/projects/:id - Update project
-router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:id', authenticateWithPermissions, requirePermission('projects', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = projectSchema.safeParse(req.body);
@@ -156,7 +156,7 @@ router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
 });
 
 // DELETE /api/projects/:id - Delete project
-router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', authenticateWithPermissions, requirePermission('projects', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     
@@ -186,7 +186,7 @@ router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: 
 });
 
 // PUT /api/projects/reorder - Bulk reorder projects
-router.put('/batch/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/batch/reorder', authenticateWithPermissions, requirePermission('projects', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const { projects } = req.body;
     
@@ -221,7 +221,7 @@ router.put('/batch/reorder', authenticateToken, async (req: AuthenticatedRequest
 });
 
 // PATCH /api/projects/:id/featured - Toggle featured status
-router.patch('/:id/featured', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.patch('/:id/featured', authenticateWithPermissions, requirePermission('projects', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const { featured } = req.body;
