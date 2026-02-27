@@ -2,8 +2,8 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { db } from '../config/firebase';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 
 const router = Router();
 
@@ -68,8 +68,8 @@ router.get('/cv', async (req, res: Response) => {
   }
 });
 
-// POST /api/files/cv - Upload new CV (authenticated)
-router.post('/cv', authenticateToken, upload.single('cv'), async (req: AuthenticatedRequest, res: Response) => {
+// POST /api/files/cv - Upload new CV (requires UPDATE permission on profile)
+router.post('/cv', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), upload.single('cv'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     if (!req.file) {
       res.status(400).json({
@@ -121,8 +121,8 @@ router.post('/cv', authenticateToken, upload.single('cv'), async (req: Authentic
   }
 });
 
-// POST /api/files/avatar - Upload avatar (authenticated)
-router.post('/avatar', authenticateToken, upload.single('avatar'), async (req: AuthenticatedRequest, res: Response) => {
+// POST /api/files/avatar - Upload avatar (requires UPDATE permission on profile)
+router.post('/avatar', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), upload.single('avatar'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     if (!req.file) {
       res.status(400).json({
@@ -174,8 +174,8 @@ router.post('/avatar', authenticateToken, upload.single('avatar'), async (req: A
   }
 });
 
-// POST /api/files/project-image - Upload project image (authenticated)
-router.post('/project-image', authenticateToken, upload.single('image'), async (req: AuthenticatedRequest, res: Response) => {
+// POST /api/files/project-image - Upload project image (requires CREATE or UPDATE permission on projects)
+router.post('/project-image', authenticateWithPermissions, requirePermission('projects', 'UPDATE'), upload.single('image'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     if (!req.file) {
       res.status(400).json({
@@ -246,8 +246,8 @@ router.post('/project-image', authenticateToken, upload.single('image'), async (
   }
 });
 
-// DELETE /api/files/image - Delete an image (authenticated)
-router.delete('/image', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// DELETE /api/files/image - Delete an image (requires DELETE permission on projects)
+router.delete('/image', authenticateWithPermissions, requirePermission('projects', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const { publicId, resourceType = 'image' } = req.body;
     
