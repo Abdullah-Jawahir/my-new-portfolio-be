@@ -33,36 +33,41 @@ const processRequestSchema = z.object({
 // GET /api/requests - Get all pending requests (Core Admin Only)
 router.get('/', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
-    const status = req.query.status as RequestStatus | undefined;
+    const statusFilter = req.query.status as RequestStatus | undefined;
     
-    let query = db.collection(PENDING_REQUESTS_COLLECTION)
-      .orderBy('createdAt', 'desc');
+    // Fetch all requests without compound query to avoid index requirements
+    const requestsSnapshot = await db.collection(PENDING_REQUESTS_COLLECTION).get();
     
-    if (status) {
-      query = db.collection(PENDING_REQUESTS_COLLECTION)
-        .where('status', '==', status)
-        .orderBy('createdAt', 'desc');
-    }
-
-    const requestsSnapshot = await query.get();
-    
-    const requests: PendingRequest[] = requestsSnapshot.docs.map(doc => ({
+    let requests: PendingRequest[] = requestsSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       createdAt: doc.data().createdAt?.toDate(),
       processedAt: doc.data().processedAt?.toDate(),
     })) as PendingRequest[];
 
-    const pendingCount = requests.filter(r => r.status === 'pending').length;
-    const approvedCount = requests.filter(r => r.status === 'approved').length;
-    const rejectedCount = requests.filter(r => r.status === 'rejected').length;
+    // Sort by createdAt descending (client-side)
+    requests.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    // Filter by status if provided (client-side)
+    if (statusFilter) {
+      requests = requests.filter(r => r.status === statusFilter);
+    }
+
+    const allRequests = requestsSnapshot.docs.map(doc => doc.data());
+    const pendingCount = allRequests.filter(r => r.status === 'pending').length;
+    const approvedCount = allRequests.filter(r => r.status === 'approved').length;
+    const rejectedCount = allRequests.filter(r => r.status === 'rejected').length;
 
     res.json({
       success: true,
       data: {
         requests,
         stats: {
-          total: requests.length,
+          total: allRequests.length,
           pending: pendingCount,
           approved: approvedCount,
           rejected: rejectedCount,
@@ -155,24 +160,26 @@ router.post('/', authenticateWithPermissions, async (req: AuthenticatedRequestWi
 
     const { action, resourceType, resourceId, resourceName, page, data, previousData, reason } = validation.data;
 
-    const existingRequest = await db.collection(PENDING_REQUESTS_COLLECTION)
+    // Check for existing similar pending request (simplified query to avoid index issues)
+    const existingRequestsSnapshot = await db.collection(PENDING_REQUESTS_COLLECTION)
       .where('subAdminId', '==', req.subAdmin.id)
       .where('status', '==', 'pending')
-      .where('action', '==', action)
-      .where('resourceType', '==', resourceType)
-      .where('page', '==', page)
-      .limit(1)
       .get();
 
-    if (!existingRequest.empty && resourceId) {
-      const existing = existingRequest.docs[0].data();
-      if (existing.resourceId === resourceId) {
-        res.status(400).json({
-          success: false,
-          error: 'A similar request is already pending',
-        });
-        return;
-      }
+    const duplicateRequest = existingRequestsSnapshot.docs.find(doc => {
+      const data = doc.data();
+      return data.action === action && 
+             data.resourceType === resourceType && 
+             data.page === page &&
+             (!resourceId || data.resourceId === resourceId);
+    });
+
+    if (duplicateRequest) {
+      res.status(400).json({
+        success: false,
+        error: 'A similar request is already pending',
+      });
+      return;
     }
 
     const pendingRequest: Omit<PendingRequest, 'id'> = {
