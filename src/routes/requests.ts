@@ -400,6 +400,51 @@ async function executeApprovedRequest(request: PendingRequest): Promise<{ succes
       return { success: false, message: 'Invalid action for aboutProfile' };
     }
 
+    // Special handling for CV upload approval
+    if (request.resourceType === 'cvUpload') {
+      if (request.action === 'UPDATE') {
+        const { deleteFromCloudinary } = await import('../config/cloudinary');
+        
+        // Delete old CV if exists
+        const profileDoc = await db.collection('profile').doc('main').get();
+        if (profileDoc.exists) {
+          const oldPublicId = profileDoc.data()?.cvPublicId;
+          if (oldPublicId) {
+            await deleteFromCloudinary(oldPublicId, 'raw');
+          }
+        }
+
+        // Update profile with the pending CV URL (it's already uploaded to Cloudinary)
+        await db.collection('profile').doc('main').set({
+          cvUrl: request.data.cvUrl,
+          cvPublicId: request.data.cvPublicId,
+          cvFileName: request.data.cvFileName,
+          updatedAt: new Date(),
+        }, { merge: true });
+        
+        return { success: true, message: 'CV upload approved and applied' };
+      }
+      return { success: false, message: 'Invalid action for cvUpload' };
+    }
+
+    // Special handling for reorder operations
+    if (request.resourceType === 'reorder') {
+      const reorderData = request.data as { collection: string; items: Array<{ id: string; order: number; featured?: boolean }> };
+      const batch = db.batch();
+      
+      for (const item of reorderData.items) {
+        const docRef = db.collection(reorderData.collection).doc(item.id);
+        const updateData: Record<string, unknown> = { order: item.order, updatedAt: new Date() };
+        if (item.featured !== undefined) {
+          updateData.featured = item.featured;
+        }
+        batch.update(docRef, updateData);
+      }
+      
+      await batch.commit();
+      return { success: true, message: `Reordered ${reorderData.items.length} items in ${reorderData.collection}` };
+    }
+
     const collectionMap: Record<string, string> = {
       profile: 'profile',
       stat: 'stats',
