@@ -87,7 +87,42 @@ router.post('/cv', authenticateWithPermissions, requirePermission('profile', 'UP
       return;
     }
 
-    // Upload to Cloudinary (raw resource type for PDFs)
+    // Check if sub-admin needs approval
+    if (req.isSubAdmin) {
+      // Upload to Cloudinary pending folder (will be moved/used after approval)
+      const result = await uploadToCloudinary(req.file.buffer, 'cv-pending', 'raw');
+
+      // Create a pending request for CV upload
+      const pendingRequest = {
+        action: 'UPDATE',
+        resourceType: 'cvUpload',
+        resourceName: req.file.originalname,
+        page: 'profile',
+        data: {
+          cvUrl: result.url,
+          cvPublicId: result.publicId,
+          cvFileName: req.file.originalname,
+        },
+        requestedBy: req.subAdmin?.email || req.user?.email,
+        requestedByName: req.subAdmin?.name || 'Sub Admin',
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      await db.collection('pendingRequests').add(pendingRequest);
+
+      res.json({
+        success: true,
+        data: { 
+          cvUrl: result.url,
+          requiresApproval: true,
+        },
+        message: 'CV upload request submitted for approval',
+      });
+      return;
+    }
+
+    // Core admin - upload directly
     const result = await uploadToCloudinary(req.file.buffer, 'cv', 'raw');
 
     // Delete old CV if exists
