@@ -184,6 +184,50 @@ router.put('/', authenticateWithPermissions, requirePermission('profile', 'UPDAT
   }
 });
 
+// Schema for about page profile fields only
+const aboutProfileSchema = z.object({
+  tagline: z.string().optional(),
+  extendedBio: z.string().optional(),
+  personalQuote: z.string().optional(),
+  location: z.string().optional(),
+  yearsExperience: z.string().optional(),
+});
+
+// PUT /api/profile/about - Update about-specific profile fields (requires UPDATE permission on 'about' page)
+router.put('/about', authenticateWithPermissions, requirePermission('about', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    const validation = aboutProfileSchema.safeParse(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid about profile data',
+        details: validation.error.errors,
+      });
+      return;
+    }
+
+    const aboutData = {
+      ...validation.data,
+      updatedAt: new Date(),
+    };
+
+    await db.collection('profile').doc('main').set(aboutData, { merge: true });
+
+    res.json({
+      success: true,
+      data: aboutData,
+      message: 'About profile updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating about profile:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update about profile',
+    });
+  }
+});
+
 // Stats CRUD
 router.post('/stats', authenticateWithPermissions, requirePermission('profile', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
