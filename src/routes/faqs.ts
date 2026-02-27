@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../config/firebase';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 import { z } from 'zod';
 
 const router = Router();
@@ -37,7 +37,7 @@ router.get('/', async (req, res: Response) => {
 });
 
 // POST /api/faqs - Create FAQ
-router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', authenticateWithPermissions, requirePermission('faqs', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = faqSchema.safeParse(req.body);
     
@@ -67,7 +67,7 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 });
 
 // PUT /api/faqs/:id - Update FAQ
-router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:id', authenticateWithPermissions, requirePermission('faqs', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = faqSchema.safeParse(req.body);
@@ -98,7 +98,7 @@ router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
 });
 
 // DELETE /api/faqs/:id - Delete FAQ
-router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', authenticateWithPermissions, requirePermission('faqs', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('faqs').doc(id).delete();
