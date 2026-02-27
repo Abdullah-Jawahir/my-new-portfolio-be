@@ -26,13 +26,19 @@ app.use(helmet({
 }));
 app.use(corsMiddleware);
 
-// Rate limiting
+// Rate limiting - more generous for admin operations
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 500, // Limit each IP to 500 requests per windowMs (increased for admin operations)
   message: {
     success: false,
     error: 'Too many requests, please try again later.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for authenticated admin verify requests
+    return req.path === '/api/admin/verify';
   },
 });
 app.use(limiter);
