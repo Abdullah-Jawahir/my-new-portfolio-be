@@ -13,12 +13,14 @@ export interface Profile {
 
 export interface Stat {
   id: string;
-  icon: string;
+  icon?: string;
   number: string;
   label: string;
-  description: string;
+  description?: string;
   order: number;
   featured?: boolean;
+  isDynamic?: boolean;
+  dynamicSource?: 'projects' | 'certifications' | 'technologies' | 'skills' | 'experience';
 }
 
 export interface SkillCategory {
