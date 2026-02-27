@@ -14,6 +14,7 @@ import contactRoutes from './routes/contact';
 import messagesRoutes from './routes/messages';
 import filesRoutes from './routes/files';
 import adminRoutes from './routes/admin';
+import techDataRoutes from './routes/techData';
 
 const app = express();
 
@@ -70,6 +71,7 @@ app.use('/api/faqs', faqsRoutes);
 app.use('/api/contact', contactLimiter, contactRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/files', filesRoutes);
+app.use('/api/tech-data', techDataRoutes);
 
 // 404 handler
 app.use((req, res) => {

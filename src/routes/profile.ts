@@ -21,12 +21,14 @@ const profileSchema = z.object({
 });
 
 const statSchema = z.object({
-  icon: z.string(),
+  icon: z.string().optional().default(''),
   number: z.string(),
   label: z.string(),
-  description: z.string(),
+  description: z.string().optional().default(''),
   order: z.number().int().min(0),
   featured: z.boolean().optional().default(true),
+  isDynamic: z.boolean().optional().default(false),
+  dynamicSource: z.string().optional(),
 });
 
 const contactInfoSchema = z.object({
@@ -43,6 +45,58 @@ const socialLinkSchema = z.object({
   order: z.number().int().min(0),
 });
 
+// Helper function to calculate dynamic stat values
+async function getDynamicStatValue(source: string): Promise<number> {
+  try {
+    switch (source) {
+      case 'projects': {
+        const projectsSnapshot = await db.collection('projects').get();
+        return projectsSnapshot.size;
+      }
+      case 'certifications': {
+        const certsSnapshot = await db.collection('certifications').get();
+        return certsSnapshot.size;
+      }
+      case 'technologies': {
+        const toolsSnapshot = await db.collection('toolsTechnologies').get();
+        return toolsSnapshot.size;
+      }
+      case 'skills': {
+        const categoriesSnapshot = await db.collection('skillCategories').get();
+        let totalSkills = 0;
+        categoriesSnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.skills && Array.isArray(data.skills)) {
+            totalSkills += data.skills.length;
+          }
+        });
+        return totalSkills;
+      }
+      case 'experience': {
+        const workSnapshot = await db.collection('workExperience').get();
+        return workSnapshot.size;
+      }
+      case 'yearsExperience': {
+        const profileDoc = await db.collection('profile').doc('main').get();
+        if (profileDoc.exists) {
+          const data = profileDoc.data();
+          const years = data?.yearsExperience;
+          if (years) {
+            const numericValue = parseInt(String(years).replace(/\D/g, ''), 10);
+            return isNaN(numericValue) ? 0 : numericValue;
+          }
+        }
+        return 0;
+      }
+      default:
+        return 0;
+    }
+  } catch (error) {
+    console.error(`Error fetching dynamic stat for ${source}:`, error);
+    return 0;
+  }
+}
+
 // GET /api/profile - Get profile data
 router.get('/', async (req, res: Response) => {
   try {
@@ -52,9 +106,30 @@ router.get('/', async (req, res: Response) => {
     const socialLinksSnapshot = await db.collection('socialLinks').orderBy('order').get();
 
     const profile = profileDoc.exists ? { id: profileDoc.id, ...profileDoc.data() } : null;
-    const stats = statsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const contactInfo = contactInfoSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const socialLinks = socialLinksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Process stats and calculate dynamic values
+    const statsPromises = statsSnapshot.docs.map(async doc => {
+      const statData = { id: doc.id, ...doc.data() } as Record<string, unknown>;
+      
+      // If stat is dynamic, calculate the value from the source
+      if (statData.isDynamic && statData.dynamicSource) {
+        const dynamicValue = await getDynamicStatValue(statData.dynamicSource as string);
+        // Keep original number as base, but use dynamic value
+        statData.number = String(dynamicValue);
+      }
+      
+      // Auto-add + suffix if not present and number is numeric
+      const numStr = String(statData.number);
+      if (!numStr.includes('+') && !numStr.includes('%') && /^\d+$/.test(numStr)) {
+        statData.number = numStr + '+';
+      }
+      
+      return statData;
+    });
+
+    const stats = await Promise.all(statsPromises);
 
     res.json({
       success: true,
