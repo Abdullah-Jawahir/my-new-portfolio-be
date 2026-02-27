@@ -62,11 +62,10 @@ function getExpirationDate(days: number = 7): Date {
 // GET /api/team - Get all sub-admins and pending invitations (Core Admin Only)
 router.get('/', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
-    const subAdminsSnapshot = await db.collection(SUB_ADMINS_COLLECTION)
-      .orderBy('createdAt', 'desc')
-      .get();
+    // Fetch all sub-admins without orderBy to avoid index requirements
+    const subAdminsSnapshot = await db.collection(SUB_ADMINS_COLLECTION).get();
     
-    const subAdmins: SubAdmin[] = subAdminsSnapshot.docs.map(doc => ({
+    let subAdmins: SubAdmin[] = subAdminsSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       createdAt: doc.data().createdAt?.toDate(),
@@ -74,17 +73,31 @@ router.get('/', authenticateWithPermissions, requireCoreAdmin, async (req: Authe
       disabledAt: doc.data().disabledAt?.toDate(),
     })) as SubAdmin[];
 
-    const invitationsSnapshot = await db.collection(INVITATIONS_COLLECTION)
-      .where('status', '==', 'pending')
-      .orderBy('createdAt', 'desc')
-      .get();
+    // Sort by createdAt descending (client-side)
+    subAdmins.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    // Fetch all invitations and filter client-side to avoid compound index
+    const invitationsSnapshot = await db.collection(INVITATIONS_COLLECTION).get();
     
-    const pendingInvitations: SubAdminInvitation[] = invitationsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate(),
-      expiresAt: doc.data().expiresAt?.toDate(),
-    })) as SubAdminInvitation[];
+    let pendingInvitations: SubAdminInvitation[] = invitationsSnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+        expiresAt: doc.data().expiresAt?.toDate(),
+      }))
+      .filter(inv => inv.status === 'pending') as SubAdminInvitation[];
+
+    // Sort by createdAt descending (client-side)
+    pendingInvitations.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
 
     res.json({
       success: true,

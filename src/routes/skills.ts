@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../config/firebase';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 import { z } from 'zod';
 
 const router = Router();
@@ -77,7 +77,7 @@ router.get('/', async (req, res: Response) => {
 });
 
 // POST /api/skills/categories - Create skill category
-router.post('/categories', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/categories', authenticateWithPermissions, requirePermission('skills', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = skillCategorySchema.safeParse(req.body);
     
@@ -107,7 +107,7 @@ router.post('/categories', authenticateToken, async (req: AuthenticatedRequest, 
 });
 
 // PUT /api/skills/categories/:id - Update skill category
-router.put('/categories/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/categories/:id', authenticateWithPermissions, requirePermission('skills', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = skillCategorySchema.safeParse(req.body);
@@ -138,7 +138,7 @@ router.put('/categories/:id', authenticateToken, async (req: AuthenticatedReques
 });
 
 // DELETE /api/skills/categories/:id - Delete skill category
-router.delete('/categories/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/categories/:id', authenticateWithPermissions, requirePermission('skills', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('skillCategories').doc(id).delete();
@@ -157,7 +157,7 @@ router.delete('/categories/:id', authenticateToken, async (req: AuthenticatedReq
 });
 
 // Additional Skills CRUD
-router.post('/additional', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/additional', authenticateWithPermissions, requirePermission('skills', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = additionalSkillSchema.safeParse(req.body);
     
@@ -186,7 +186,7 @@ router.post('/additional', authenticateToken, async (req: AuthenticatedRequest, 
   }
 });
 
-router.put('/additional/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/additional/:id', authenticateWithPermissions, requirePermission('skills', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = additionalSkillSchema.safeParse(req.body);
@@ -216,7 +216,7 @@ router.put('/additional/:id', authenticateToken, async (req: AuthenticatedReques
   }
 });
 
-router.delete('/additional/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/additional/:id', authenticateWithPermissions, requirePermission('skills', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('additionalSkills').doc(id).delete();
@@ -235,7 +235,7 @@ router.delete('/additional/:id', authenticateToken, async (req: AuthenticatedReq
 });
 
 // Tools & Technologies CRUD
-router.post('/tools', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/tools', authenticateWithPermissions, requirePermission('skills', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = toolTechSchema.safeParse(req.body);
     
@@ -264,7 +264,7 @@ router.post('/tools', authenticateToken, async (req: AuthenticatedRequest, res: 
   }
 });
 
-router.put('/tools/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/tools/:id', authenticateWithPermissions, requirePermission('skills', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = toolTechSchema.safeParse(req.body);
@@ -294,7 +294,7 @@ router.put('/tools/:id', authenticateToken, async (req: AuthenticatedRequest, re
   }
 });
 
-router.delete('/tools/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/tools/:id', authenticateWithPermissions, requirePermission('skills', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('toolsTechnologies').doc(id).delete();
@@ -313,7 +313,7 @@ router.delete('/tools/:id', authenticateToken, async (req: AuthenticatedRequest,
 });
 
 // Bulk update for reordering
-router.put('/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/reorder', authenticateWithPermissions, requirePermission('skills', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const { categories, additionalSkills } = req.body;
     
