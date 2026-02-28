@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { z } from 'zod';
 import crypto from 'crypto';
+import { sendInviteEmail } from '../services/email';
 
 const router = Router();
 
@@ -190,14 +191,27 @@ router.post('/invite', authenticateWithPermissions, requireCoreAdmin, async (req
 
     const docRef = await db.collection(INVITATIONS_COLLECTION).add(invitation);
 
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/tree/admin/accept-invite?token=${token}`;
+
+    // Send invitation email
+    const emailSent = await sendInviteEmail({
+      to: inviteeEmail,
+      inviteLink,
+      invitedByEmail: req.user!.email,
+      expiresAt,
+    });
+
     res.status(201).json({
       success: true,
       data: {
         id: docRef.id,
         ...invitation,
-        inviteLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/tree/admin/accept-invite?token=${token}`,
+        inviteLink,
+        emailSent,
       },
-      message: 'Invitation sent successfully',
+      message: emailSent 
+        ? 'Invitation sent successfully' 
+        : 'Invitation created but email could not be sent. Please share the invite link manually.',
     });
   } catch (error) {
     console.error('Error sending invitation:', error);
