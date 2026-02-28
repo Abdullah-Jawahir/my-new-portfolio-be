@@ -84,13 +84,16 @@ router.get('/', authenticateWithPermissions, requireCoreAdmin, async (req: Authe
     const invitationsSnapshot = await db.collection(INVITATIONS_COLLECTION).get();
     
     let pendingInvitations: SubAdminInvitation[] = invitationsSnapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        expiresAt: doc.data().expiresAt?.toDate(),
-      }))
-      .filter(inv => inv.status === 'pending') as SubAdminInvitation[];
+      .map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate(),
+          expiresAt: data.expiresAt?.toDate(),
+        } as SubAdminInvitation;
+      })
+      .filter(inv => inv.status === 'pending');
 
     // Sort by createdAt descending (client-side)
     pendingInvitations.sort((a, b) => {
@@ -341,7 +344,7 @@ router.post('/invite/accept/:token', authenticateToken, async (req: Authenticate
 // DELETE /api/team/invite/:id - Cancel/revoke invitation (Core Admin Only)
 router.delete('/invite/:id', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const invitationRef = db.collection(INVITATIONS_COLLECTION).doc(id);
     const invitationDoc = await invitationRef.get();
@@ -372,7 +375,7 @@ router.delete('/invite/:id', authenticateWithPermissions, requireCoreAdmin, asyn
 // PUT /api/team/:id/permissions - Update sub-admin permissions (Core Admin Only)
 router.put('/:id/permissions', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const validation = updatePermissionsSchema.safeParse(req.body);
     
     if (!validation.success) {
@@ -419,7 +422,7 @@ router.put('/:id/permissions', authenticateWithPermissions, requireCoreAdmin, as
 // PUT /api/team/:id/disable - Disable sub-admin (Core Admin Only)
 router.put('/:id/disable', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const validation = disableSchema.safeParse(req.body);
     
     if (!validation.success) {
@@ -463,7 +466,7 @@ router.put('/:id/disable', authenticateWithPermissions, requireCoreAdmin, async 
 // PUT /api/team/:id/enable - Re-enable sub-admin (Core Admin Only)
 router.put('/:id/enable', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const subAdminRef = db.collection(SUB_ADMINS_COLLECTION).doc(id);
     const subAdminDoc = await subAdminRef.get();
@@ -498,7 +501,7 @@ router.put('/:id/enable', authenticateWithPermissions, requireCoreAdmin, async (
 // DELETE /api/team/:id - Delete sub-admin (Core Admin Only)
 router.delete('/:id', authenticateWithPermissions, requireCoreAdmin, async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const subAdminRef = db.collection(SUB_ADMINS_COLLECTION).doc(id);
     const subAdminDoc = await subAdminRef.get();
