@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../config/firebase';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 import { z } from 'zod';
 
 const router = Router();
@@ -99,7 +99,7 @@ router.get('/', async (req, res: Response) => {
 });
 
 // Work Experience CRUD
-router.post('/work', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/work', authenticateWithPermissions, requirePermission('experience', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = workExperienceSchema.safeParse(req.body);
     
@@ -131,7 +131,7 @@ router.post('/work', authenticateToken, async (req: AuthenticatedRequest, res: R
   }
 });
 
-router.put('/work/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/work/:id', authenticateWithPermissions, requirePermission('experience', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = workExperienceSchema.safeParse(req.body);
@@ -164,7 +164,7 @@ router.put('/work/:id', authenticateToken, async (req: AuthenticatedRequest, res
   }
 });
 
-router.delete('/work/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/work/:id', authenticateWithPermissions, requirePermission('experience', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('workExperience').doc(id).delete();
@@ -183,7 +183,7 @@ router.delete('/work/:id', authenticateToken, async (req: AuthenticatedRequest, 
 });
 
 // PUT /api/experience/work/batch/reorder - Bulk reorder work experience
-router.put('/work/batch/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/work/batch/reorder', authenticateWithPermissions, requirePermission('experience', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const { items } = req.body;
     
@@ -219,8 +219,8 @@ router.put('/work/batch/reorder', authenticateToken, async (req: AuthenticatedRe
   }
 });
 
-// Certifications CRUD
-router.post('/certifications', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// Certifications CRUD (displayed on Education page)
+router.post('/certifications', authenticateWithPermissions, requirePermission('education', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = certificationSchema.safeParse(req.body);
     
@@ -252,7 +252,7 @@ router.post('/certifications', authenticateToken, async (req: AuthenticatedReque
   }
 });
 
-router.put('/certifications/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/certifications/:id', authenticateWithPermissions, requirePermission('education', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = certificationSchema.safeParse(req.body);
@@ -285,7 +285,7 @@ router.put('/certifications/:id', authenticateToken, async (req: AuthenticatedRe
   }
 });
 
-router.delete('/certifications/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/certifications/:id', authenticateWithPermissions, requirePermission('education', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('certifications').doc(id).delete();
@@ -303,8 +303,8 @@ router.delete('/certifications/:id', authenticateToken, async (req: Authenticate
   }
 });
 
-// Core Values CRUD
-router.post('/core-values', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// Core Values CRUD (displayed on About page)
+router.post('/core-values', authenticateWithPermissions, requirePermission('about', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = coreValueSchema.safeParse(req.body);
     
@@ -333,7 +333,7 @@ router.post('/core-values', authenticateToken, async (req: AuthenticatedRequest,
   }
 });
 
-router.put('/core-values/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/core-values/:id', authenticateWithPermissions, requirePermission('about', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = coreValueSchema.safeParse(req.body);
@@ -363,7 +363,7 @@ router.put('/core-values/:id', authenticateToken, async (req: AuthenticatedReque
   }
 });
 
-router.delete('/core-values/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/core-values/:id', authenticateWithPermissions, requirePermission('about', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('coreValues').doc(id).delete();
@@ -381,8 +381,8 @@ router.delete('/core-values/:id', authenticateToken, async (req: AuthenticatedRe
   }
 });
 
-// Interests CRUD
-router.post('/interests', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// Interests CRUD (displayed on About page)
+router.post('/interests', authenticateWithPermissions, requirePermission('about', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = interestSchema.safeParse(req.body);
     
@@ -411,7 +411,7 @@ router.post('/interests', authenticateToken, async (req: AuthenticatedRequest, r
   }
 });
 
-router.put('/interests/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/interests/:id', authenticateWithPermissions, requirePermission('about', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = interestSchema.safeParse(req.body);
@@ -441,7 +441,7 @@ router.put('/interests/:id', authenticateToken, async (req: AuthenticatedRequest
   }
 });
 
-router.delete('/interests/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/interests/:id', authenticateWithPermissions, requirePermission('about', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('interests').doc(id).delete();
@@ -459,8 +459,8 @@ router.delete('/interests/:id', authenticateToken, async (req: AuthenticatedRequ
   }
 });
 
-// Learning Goals CRUD
-router.post('/learning-goals', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// Learning Goals CRUD (displayed on Skills page)
+router.post('/learning-goals', authenticateWithPermissions, requirePermission('skills', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = learningGoalSchema.safeParse(req.body);
     
@@ -489,7 +489,7 @@ router.post('/learning-goals', authenticateToken, async (req: AuthenticatedReque
   }
 });
 
-router.put('/learning-goals/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/learning-goals/:id', authenticateWithPermissions, requirePermission('skills', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = learningGoalSchema.safeParse(req.body);
@@ -519,7 +519,7 @@ router.put('/learning-goals/:id', authenticateToken, async (req: AuthenticatedRe
   }
 });
 
-router.delete('/learning-goals/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/learning-goals/:id', authenticateWithPermissions, requirePermission('skills', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('learningGoals').doc(id).delete();
@@ -537,8 +537,8 @@ router.delete('/learning-goals/:id', authenticateToken, async (req: Authenticate
   }
 });
 
-// Fun Facts CRUD
-router.post('/fun-facts', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// Fun Facts CRUD (displayed on About page)
+router.post('/fun-facts', authenticateWithPermissions, requirePermission('about', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = funFactSchema.safeParse(req.body);
     
@@ -567,7 +567,7 @@ router.post('/fun-facts', authenticateToken, async (req: AuthenticatedRequest, r
   }
 });
 
-router.put('/fun-facts/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/fun-facts/:id', authenticateWithPermissions, requirePermission('about', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = funFactSchema.safeParse(req.body);
@@ -597,7 +597,7 @@ router.put('/fun-facts/:id', authenticateToken, async (req: AuthenticatedRequest
   }
 });
 
-router.delete('/fun-facts/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/fun-facts/:id', authenticateWithPermissions, requirePermission('about', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('funFacts').doc(id).delete();

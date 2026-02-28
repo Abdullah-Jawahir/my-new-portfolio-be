@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../config/firebase';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 import { sendReplyEmail, sendReplyEmailWithNodemailer } from '../services/email';
 import { z } from 'zod';
 
@@ -15,8 +15,8 @@ const replySchema = z.object({
   provider: z.enum(['resend', 'nodemailer']).optional().default('resend'),
 });
 
-// GET /api/messages - Get all messages (authenticated)
-router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/messages - Get all messages (requires VIEW permission)
+router.get('/', authenticateWithPermissions, requirePermission('messages', 'VIEW'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const snapshot = await db.collection('messages')
       .orderBy('createdAt', 'desc')
@@ -50,8 +50,8 @@ router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Respon
   }
 });
 
-// GET /api/messages/stats - Get message statistics (authenticated)
-router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/messages/stats - Get message statistics (requires VIEW permission)
+router.get('/stats', authenticateWithPermissions, requirePermission('messages', 'VIEW'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const snapshot = await db.collection('messages').get();
     
@@ -77,8 +77,8 @@ router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: R
   }
 });
 
-// GET /api/messages/:id - Get single message (authenticated)
-router.get('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/messages/:id - Get single message (requires VIEW permission)
+router.get('/:id', authenticateWithPermissions, requirePermission('messages', 'VIEW'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const doc = await db.collection('messages').doc(id).get();
@@ -110,8 +110,8 @@ router.get('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
   }
 });
 
-// PATCH /api/messages/:id/read - Mark message as read/unread (authenticated)
-router.patch('/:id/read', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// PATCH /api/messages/:id/read - Mark message as read/unread (requires UPDATE permission)
+router.patch('/:id/read', authenticateWithPermissions, requirePermission('messages', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const { read } = req.body;
@@ -149,8 +149,8 @@ router.patch('/:id/read', authenticateToken, async (req: AuthenticatedRequest, r
   }
 });
 
-// POST /api/messages/:id/reply - Send reply email (authenticated)
-router.post('/:id/reply', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// POST /api/messages/:id/reply - Send reply email (requires CREATE permission for replies)
+router.post('/:id/reply', authenticateWithPermissions, requirePermission('messages', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = replySchema.safeParse(req.body);
@@ -223,8 +223,8 @@ router.post('/:id/reply', authenticateToken, async (req: AuthenticatedRequest, r
   }
 });
 
-// DELETE /api/messages/:id - Delete message (authenticated)
-router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// DELETE /api/messages/:id - Delete message (requires DELETE permission)
+router.delete('/:id', authenticateWithPermissions, requirePermission('messages', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     
@@ -253,8 +253,8 @@ router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: 
   }
 });
 
-// DELETE /api/messages - Delete multiple messages (authenticated)
-router.delete('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// DELETE /api/messages - Delete multiple messages (requires DELETE permission)
+router.delete('/', authenticateWithPermissions, requirePermission('messages', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const { ids } = req.body;
     

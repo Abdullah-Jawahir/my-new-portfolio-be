@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../config/firebase';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest, Profile, Stat, ContactInfo, SocialLink } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 import { z } from 'zod';
 
 const router = Router();
@@ -149,8 +149,8 @@ router.get('/', async (req, res: Response) => {
   }
 });
 
-// PUT /api/profile - Update profile (authenticated)
-router.put('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+// PUT /api/profile - Update profile (requires UPDATE permission)
+router.put('/', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = profileSchema.safeParse(req.body);
     
@@ -184,8 +184,52 @@ router.put('/', authenticateToken, async (req: AuthenticatedRequest, res: Respon
   }
 });
 
+// Schema for about page profile fields only
+const aboutProfileSchema = z.object({
+  tagline: z.string().optional(),
+  extendedBio: z.string().optional(),
+  personalQuote: z.string().optional(),
+  location: z.string().optional(),
+  yearsExperience: z.string().optional(),
+});
+
+// PUT /api/profile/about - Update about-specific profile fields (requires UPDATE permission on 'about' page)
+router.put('/about', authenticateWithPermissions, requirePermission('about', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    const validation = aboutProfileSchema.safeParse(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid about profile data',
+        details: validation.error.errors,
+      });
+      return;
+    }
+
+    const aboutData = {
+      ...validation.data,
+      updatedAt: new Date(),
+    };
+
+    await db.collection('profile').doc('main').set(aboutData, { merge: true });
+
+    res.json({
+      success: true,
+      data: aboutData,
+      message: 'About profile updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating about profile:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update about profile',
+    });
+  }
+});
+
 // Stats CRUD
-router.post('/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/stats', authenticateWithPermissions, requirePermission('profile', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = statSchema.safeParse(req.body);
     
@@ -214,7 +258,7 @@ router.post('/stats', authenticateToken, async (req: AuthenticatedRequest, res: 
   }
 });
 
-router.put('/stats/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/stats/:id', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = statSchema.safeParse(req.body);
@@ -244,7 +288,7 @@ router.put('/stats/:id', authenticateToken, async (req: AuthenticatedRequest, re
   }
 });
 
-router.delete('/stats/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/stats/:id', authenticateWithPermissions, requirePermission('profile', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('stats').doc(id).delete();
@@ -263,7 +307,7 @@ router.delete('/stats/:id', authenticateToken, async (req: AuthenticatedRequest,
 });
 
 // PUT /api/profile/stats/batch/reorder - Bulk reorder stats
-router.put('/stats/batch/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/stats/batch/reorder', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const { items } = req.body;
     
@@ -304,7 +348,7 @@ router.put('/stats/batch/reorder', authenticateToken, async (req: AuthenticatedR
 });
 
 // Contact Info CRUD
-router.post('/contact-info', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/contact-info', authenticateWithPermissions, requirePermission('profile', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = contactInfoSchema.safeParse(req.body);
     
@@ -333,7 +377,7 @@ router.post('/contact-info', authenticateToken, async (req: AuthenticatedRequest
   }
 });
 
-router.put('/contact-info/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/contact-info/:id', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = contactInfoSchema.safeParse(req.body);
@@ -363,7 +407,7 @@ router.put('/contact-info/:id', authenticateToken, async (req: AuthenticatedRequ
   }
 });
 
-router.delete('/contact-info/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/contact-info/:id', authenticateWithPermissions, requirePermission('profile', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('contactInfo').doc(id).delete();
@@ -382,7 +426,7 @@ router.delete('/contact-info/:id', authenticateToken, async (req: AuthenticatedR
 });
 
 // Social Links CRUD
-router.post('/social-links', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/social-links', authenticateWithPermissions, requirePermission('profile', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = socialLinkSchema.safeParse(req.body);
     
@@ -411,7 +455,7 @@ router.post('/social-links', authenticateToken, async (req: AuthenticatedRequest
   }
 });
 
-router.put('/social-links/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/social-links/:id', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = socialLinkSchema.safeParse(req.body);
@@ -441,7 +485,7 @@ router.put('/social-links/:id', authenticateToken, async (req: AuthenticatedRequ
   }
 });
 
-router.delete('/social-links/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/social-links/:id', authenticateWithPermissions, requirePermission('profile', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     await db.collection('socialLinks').doc(id).delete();

@@ -1,572 +1,316 @@
-import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-// Nodemailer transporter configuration
-// Uses Gmail SMTP by default, can be configured via environment variables
-const createNodemailerTransport = () => {
-  const service = process.env.SMTP_SERVICE || 'gmail';
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : undefined;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  
-  if (host && port) {
+const createTransporter = () => {
+  // Use custom SMTP server if configured
+  if (process.env.SMTP_HOST && process.env.SMTP_PORT) {
     return nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT),
+      secure: process.env.SMTP_PORT === '465',
       auth: {
-        user,
-        pass,
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
     });
   }
-  
-  // Gmail SMTP configuration
+
+  // Use Gmail service
   return nodemailer.createTransport({
-    service,
+    service: process.env.SMTP_SERVICE || 'gmail',
     auth: {
-      user,
-      pass,
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
     },
   });
 };
 
-interface ContactEmailData {
+const transporter = createTransporter();
+
+interface InviteEmailParams {
+  to: string;
+  inviteLink: string;
+  invitedByEmail: string;
+  expiresAt: Date;
+}
+
+export async function sendInviteEmail({ to, inviteLink, invitedByEmail, expiresAt }: InviteEmailParams): Promise<boolean> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn('SMTP credentials not configured. Skipping email send.');
+    return false;
+  }
+
+  const expiryDate = new Date(expiresAt).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const mailOptions = {
+    from: `"${process.env.ADMIN_NAME || 'Portfolio Admin'}" <${process.env.SMTP_USER}>`,
+    to,
+    subject: 'You\'ve Been Invited as a Sub-Admin',
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Admin Invitation</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0f172a; padding: 40px 20px;">
+            <tr>
+              <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1e293b; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
+                  <!-- Header -->
+                  <tr>
+                    <td style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); padding: 40px 40px 30px;">
+                      <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">
+                        You're Invited! 🎉
+                      </h1>
+                      <p style="margin: 10px 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">
+                        Join the Portfolio Admin Team
+                      </p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Body -->
+                  <tr>
+                    <td style="padding: 40px;">
+                      <p style="margin: 0 0 20px; color: #e2e8f0; font-size: 16px; line-height: 1.6;">
+                        Hello,
+                      </p>
+                      <p style="margin: 0 0 20px; color: #e2e8f0; font-size: 16px; line-height: 1.6;">
+                        You've been invited by <strong style="color: #60a5fa;">${invitedByEmail}</strong> to become a sub-admin on the portfolio management system.
+                      </p>
+                      <p style="margin: 0 0 30px; color: #e2e8f0; font-size: 16px; line-height: 1.6;">
+                        As a sub-admin, you'll be able to help manage portfolio content based on the permissions assigned to you.
+                      </p>
+                      
+                      <!-- CTA Button -->
+                      <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td align="center" style="padding: 20px 0;">
+                            <a href="${inviteLink}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 12px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);">
+                              Accept Invitation
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                      
+                      <!-- Link fallback -->
+                      <p style="margin: 20px 0 0; color: #94a3b8; font-size: 14px; line-height: 1.6;">
+                        Or copy and paste this link into your browser:
+                      </p>
+                      <p style="margin: 8px 0 30px; color: #60a5fa; font-size: 14px; word-break: break-all;">
+                        <a href="${inviteLink}" style="color: #60a5fa; text-decoration: none;">${inviteLink}</a>
+                      </p>
+                      
+                      <!-- Expiry warning -->
+                      <div style="background-color: #1e3a5f; border-left: 4px solid #f59e0b; padding: 16px 20px; border-radius: 8px; margin-top: 20px;">
+                        <p style="margin: 0; color: #fbbf24; font-size: 14px; font-weight: 600;">
+                          ⏰ This invitation expires on ${expiryDate}
+                        </p>
+                        <p style="margin: 8px 0 0; color: #94a3b8; font-size: 13px;">
+                          Please accept the invitation before it expires.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                  
+                  <!-- Footer -->
+                  <tr>
+                    <td style="background-color: #0f172a; padding: 30px 40px; border-top: 1px solid #334155;">
+                      <p style="margin: 0; color: #64748b; font-size: 13px; text-align: center;">
+                        If you didn't expect this invitation, you can safely ignore this email.
+                      </p>
+                      <p style="margin: 16px 0 0; color: #475569; font-size: 12px; text-align: center;">
+                        © ${new Date().getFullYear()} Portfolio Admin System
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `,
+    text: `
+You've Been Invited as a Sub-Admin!
+
+Hello,
+
+You've been invited by ${invitedByEmail} to become a sub-admin on the portfolio management system.
+
+As a sub-admin, you'll be able to help manage portfolio content based on the permissions assigned to you.
+
+Click here to accept the invitation: ${inviteLink}
+
+⏰ This invitation expires on ${expiryDate}
+
+If you didn't expect this invitation, you can safely ignore this email.
+    `.trim(),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Invite email sent successfully to ${to}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send invite email:', error);
+    return false;
+  }
+}
+
+export async function verifyEmailConfig(): Promise<boolean> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    return false;
+  }
+
+  try {
+    await transporter.verify();
+    return true;
+  } catch (error) {
+    console.error('Email configuration error:', error);
+    return false;
+  }
+}
+
+// Contact notification email (when someone submits contact form)
+interface ContactNotificationParams {
   name: string;
   email: string;
   subject: string;
   message: string;
 }
 
-interface ReplyEmailData {
-  to: string;
-  subject: string;
-  message: string;
-  originalMessage?: {
-    name: string;
-    email: string;
-    subject: string;
-    message: string;
-    createdAt: Date | string;
-  };
-}
+export async function sendContactNotification({ name, email, subject, message }: ContactNotificationParams): Promise<boolean> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn('SMTP credentials not configured. Skipping contact notification.');
+    return false;
+  }
 
-export const sendContactNotification = async (data: ContactEmailData): Promise<boolean> => {
-  const adminEmail = process.env.ADMIN_EMAIL || 'mjabdullah33@gmail.com';
-  
-  try {
-    const { error } = await resend.emails.send({
-      from: 'Portfolio Contact <onboarding@resend.dev>',
-      to: [adminEmail],
-      subject: `New Contact Form: ${data.subject}`,
-      html: `
-        <!DOCTYPE html>
-        <html>
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER;
+
+  const mailOptions = {
+    from: `"Portfolio Contact Form" <${process.env.SMTP_USER}>`,
+    to: adminEmail,
+    replyTo: email,
+    subject: `New Contact: ${subject}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
         <head>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 600px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            .header {
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              padding: 30px;
-              border-radius: 10px 10px 0 0;
-              text-align: center;
-            }
-            .content {
-              background: #f9fafb;
-              padding: 30px;
-              border: 1px solid #e5e7eb;
-              border-top: none;
-              border-radius: 0 0 10px 10px;
-            }
-            .field {
-              margin-bottom: 20px;
-            }
-            .label {
-              font-weight: 600;
-              color: #6b7280;
-              font-size: 12px;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              margin-bottom: 5px;
-            }
-            .value {
-              background: white;
-              padding: 12px 16px;
-              border-radius: 8px;
-              border: 1px solid #e5e7eb;
-            }
-            .message-box {
-              background: white;
-              padding: 20px;
-              border-radius: 8px;
-              border: 1px solid #e5e7eb;
-              white-space: pre-wrap;
-            }
-            .footer {
-              text-align: center;
-              margin-top: 20px;
-              color: #9ca3af;
-              font-size: 12px;
-            }
-            .reply-btn {
-              display: inline-block;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              padding: 12px 24px;
-              border-radius: 8px;
-              text-decoration: none;
-              margin-top: 20px;
-            }
-          </style>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
         </head>
-        <body>
-          <div class="header">
-            <h1 style="margin: 0; font-size: 24px;">New Contact Message</h1>
-            <p style="margin: 10px 0 0; opacity: 0.9;">Someone reached out through your portfolio</p>
-          </div>
-          <div class="content">
-            <div class="field">
-              <div class="label">From</div>
-              <div class="value">${data.name}</div>
-            </div>
-            <div class="field">
-              <div class="label">Email</div>
-              <div class="value">${data.email}</div>
-            </div>
-            <div class="field">
-              <div class="label">Subject</div>
-              <div class="value">${data.subject}</div>
-            </div>
-            <div class="field">
-              <div class="label">Message</div>
-              <div class="message-box">${data.message}</div>
-            </div>
-            <div style="text-align: center;">
-              <a href="mailto:${data.email}?subject=Re: ${data.subject}" class="reply-btn">
-                Reply to ${data.name}
-              </a>
-            </div>
-          </div>
-          <div class="footer">
-            <p>This email was sent from your portfolio contact form.</p>
-          </div>
+        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0f172a; padding: 40px 20px;">
+            <tr>
+              <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1e293b; border-radius: 16px; overflow: hidden;">
+                  <tr>
+                    <td style="background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%); padding: 30px;">
+                      <h1 style="margin: 0; color: #ffffff; font-size: 24px;">New Contact Message</h1>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 30px;">
+                      <p style="color: #94a3b8; margin: 0 0 8px;">From:</p>
+                      <p style="color: #e2e8f0; margin: 0 0 20px; font-size: 16px;"><strong>${name}</strong> &lt;${email}&gt;</p>
+                      
+                      <p style="color: #94a3b8; margin: 0 0 8px;">Subject:</p>
+                      <p style="color: #e2e8f0; margin: 0 0 20px; font-size: 16px;">${subject}</p>
+                      
+                      <p style="color: #94a3b8; margin: 0 0 8px;">Message:</p>
+                      <div style="background-color: #0f172a; padding: 20px; border-radius: 8px; color: #e2e8f0; white-space: pre-wrap;">${message}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </body>
-        </html>
-      `,
-    });
+      </html>
+    `,
+    text: `New contact message from ${name} (${email})\n\nSubject: ${subject}\n\nMessage:\n${message}`,
+  };
 
-    if (error) {
-      console.error('Error sending email:', error);
-      return false;
-    }
-
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('Contact notification sent successfully');
     return true;
   } catch (error) {
     console.error('Failed to send contact notification:', error);
     return false;
   }
-};
+}
 
-export const sendReplyEmail = async (data: ReplyEmailData): Promise<boolean> => {
-  const adminName = process.env.ADMIN_NAME || 'Abdullah Jawahir';
-  const adminEmail = process.env.ADMIN_EMAIL || 'mjabdullah33@gmail.com';
-  
-  try {
-    const originalDate = data.originalMessage?.createdAt 
-      ? new Date(data.originalMessage.createdAt).toLocaleString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : '';
+// Reply email functions
+interface ReplyEmailParams {
+  to: string;
+  subject: string;
+  message: string;
+}
 
-    const { error } = await resend.emails.send({
-      from: `${adminName} <onboarding@resend.dev>`,
-      to: [data.to],
-      replyTo: adminEmail,
-      subject: data.subject,
-      html: `
-        <!DOCTYPE html>
-        <html>
+export async function sendReplyEmail({ to, subject, message }: ReplyEmailParams): Promise<boolean> {
+  // This function is for Resend - we'll use nodemailer instead
+  return sendReplyEmailWithNodemailer({ to, subject, message });
+}
+
+export async function sendReplyEmailWithNodemailer({ to, subject, message }: ReplyEmailParams): Promise<boolean> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn('SMTP credentials not configured. Cannot send reply.');
+    return false;
+  }
+
+  const mailOptions = {
+    from: `"${process.env.ADMIN_NAME || 'Abdullah Jawahir'}" <${process.env.SMTP_USER}>`,
+    to,
+    subject,
+    html: `
+      <!DOCTYPE html>
+      <html>
         <head>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              line-height: 1.8;
-              color: #333;
-              max-width: 600px;
-              margin: 0 auto;
-              padding: 20px;
-              background-color: #f5f5f5;
-            }
-            .email-container {
-              background: white;
-              border-radius: 12px;
-              overflow: hidden;
-              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            }
-            .header {
-              background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-              color: white;
-              padding: 30px;
-              text-align: center;
-            }
-            .header h1 {
-              margin: 0;
-              font-size: 24px;
-              font-weight: 600;
-            }
-            .header p {
-              margin: 8px 0 0;
-              opacity: 0.9;
-              font-size: 14px;
-            }
-            .content {
-              padding: 30px;
-            }
-            .greeting {
-              font-size: 16px;
-              color: #374151;
-              margin-bottom: 20px;
-            }
-            .message-body {
-              font-size: 15px;
-              color: #4b5563;
-              white-space: pre-wrap;
-              line-height: 1.8;
-              margin-bottom: 30px;
-            }
-            .signature {
-              border-top: 1px solid #e5e7eb;
-              padding-top: 20px;
-              margin-top: 30px;
-            }
-            .signature-name {
-              font-weight: 600;
-              color: #1f2937;
-              font-size: 16px;
-            }
-            .signature-title {
-              color: #6b7280;
-              font-size: 14px;
-              margin-top: 4px;
-            }
-            .original-message {
-              background: #f9fafb;
-              border-left: 4px solid #3b82f6;
-              padding: 20px;
-              margin-top: 30px;
-              border-radius: 0 8px 8px 0;
-            }
-            .original-header {
-              font-size: 12px;
-              color: #6b7280;
-              margin-bottom: 12px;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .original-meta {
-              font-size: 13px;
-              color: #9ca3af;
-              margin-bottom: 8px;
-            }
-            .original-content {
-              font-size: 14px;
-              color: #6b7280;
-              white-space: pre-wrap;
-            }
-            .footer {
-              background: #f9fafb;
-              padding: 20px 30px;
-              text-align: center;
-              border-top: 1px solid #e5e7eb;
-            }
-            .footer p {
-              margin: 0;
-              font-size: 12px;
-              color: #9ca3af;
-            }
-            .social-links {
-              margin-top: 15px;
-            }
-            .social-links a {
-              display: inline-block;
-              margin: 0 8px;
-              color: #6b7280;
-              text-decoration: none;
-              font-size: 13px;
-            }
-            .social-links a:hover {
-              color: #3b82f6;
-            }
-          </style>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
         </head>
-        <body>
-          <div class="email-container">
-            <div class="header">
-              <h1>${adminName}</h1>
-              <p>Full Stack Engineer</p>
-            </div>
-            <div class="content">
-              <div class="greeting">
-                Hi ${data.originalMessage?.name || 'there'},
-              </div>
-              <div class="message-body">${data.message}</div>
-              <div class="signature">
-                <div class="signature-name">${adminName}</div>
-                <div class="signature-title">Full Stack Engineer</div>
-              </div>
-              ${data.originalMessage ? `
-              <div class="original-message">
-                <div class="original-header">In reply to your message</div>
-                <div class="original-meta">
-                  <strong>From:</strong> ${data.originalMessage.name} &lt;${data.originalMessage.email}&gt;<br>
-                  <strong>Date:</strong> ${originalDate}<br>
-                  <strong>Subject:</strong> ${data.originalMessage.subject}
-                </div>
-                <div class="original-content">${data.originalMessage.message}</div>
-              </div>
-              ` : ''}
-            </div>
-            <div class="footer">
-              <p>This email was sent by ${adminName}</p>
-              <div class="social-links">
-                <a href="https://github.com/Abdullah-Jawahir">GitHub</a>
-                <a href="https://www.linkedin.com/in/mohamed-jawahir-abdullah/">LinkedIn</a>
-              </div>
-            </div>
-          </div>
+        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0f172a; padding: 40px 20px;">
+            <tr>
+              <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1e293b; border-radius: 16px; overflow: hidden;">
+                  <tr>
+                    <td style="padding: 30px;">
+                      <div style="color: #e2e8f0; font-size: 16px; line-height: 1.6; white-space: pre-wrap;">${message}</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 20px 30px; border-top: 1px solid #334155;">
+                      <p style="margin: 0; color: #64748b; font-size: 13px;">
+                        Best regards,<br>
+                        <strong style="color: #e2e8f0;">${process.env.ADMIN_NAME || 'Abdullah Jawahir'}</strong>
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </body>
-        </html>
-      `,
-    });
+      </html>
+    `,
+    text: `${message}\n\nBest regards,\n${process.env.ADMIN_NAME || 'Abdullah Jawahir'}`,
+  };
 
-    if (error) {
-      console.error('Error sending reply email:', error);
-      throw error;
-    }
-
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Reply email sent to ${to}`);
     return true;
   } catch (error) {
     console.error('Failed to send reply email:', error);
-    throw error;
+    return false;
   }
-};
-
-// Send reply email using Nodemailer (Gmail SMTP or other SMTP service)
-export const sendReplyEmailWithNodemailer = async (data: ReplyEmailData): Promise<boolean> => {
-  const adminName = process.env.ADMIN_NAME || 'Abdullah Jawahir';
-  const adminEmail = process.env.ADMIN_EMAIL || 'mjabdullah33@gmail.com';
-  
-  // Check if SMTP credentials are configured
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.error('SMTP credentials not configured. Set SMTP_USER and SMTP_PASS in .env');
-    throw new Error('Email service not configured. Please use the "Open Email App" option instead.');
-  }
-  
-  try {
-    const transporter = createNodemailerTransport();
-    
-    const originalDate = data.originalMessage?.createdAt 
-      ? new Date(data.originalMessage.createdAt).toLocaleString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : '';
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.8;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-          }
-          .email-container {
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          }
-          .header {
-            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-          }
-          .header h1 {
-            margin: 0;
-            font-size: 24px;
-            font-weight: 600;
-          }
-          .header p {
-            margin: 8px 0 0;
-            opacity: 0.9;
-            font-size: 14px;
-          }
-          .content {
-            padding: 30px;
-          }
-          .greeting {
-            font-size: 16px;
-            color: #374151;
-            margin-bottom: 20px;
-          }
-          .message-body {
-            font-size: 15px;
-            color: #4b5563;
-            white-space: pre-wrap;
-            line-height: 1.8;
-            margin-bottom: 30px;
-          }
-          .signature {
-            border-top: 1px solid #e5e7eb;
-            padding-top: 20px;
-            margin-top: 30px;
-          }
-          .signature-name {
-            font-weight: 600;
-            color: #1f2937;
-            font-size: 16px;
-          }
-          .signature-title {
-            color: #6b7280;
-            font-size: 14px;
-            margin-top: 4px;
-          }
-          .original-message {
-            background: #f9fafb;
-            border-left: 4px solid #3b82f6;
-            padding: 20px;
-            margin-top: 30px;
-            border-radius: 0 8px 8px 0;
-          }
-          .original-header {
-            font-size: 12px;
-            color: #6b7280;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          .original-meta {
-            font-size: 13px;
-            color: #9ca3af;
-            margin-bottom: 8px;
-          }
-          .original-content {
-            font-size: 14px;
-            color: #6b7280;
-            white-space: pre-wrap;
-          }
-          .footer {
-            background: #f9fafb;
-            padding: 20px 30px;
-            text-align: center;
-            border-top: 1px solid #e5e7eb;
-          }
-          .footer p {
-            margin: 0;
-            font-size: 12px;
-            color: #9ca3af;
-          }
-          .social-links {
-            margin-top: 15px;
-          }
-          .social-links a {
-            display: inline-block;
-            margin: 0 8px;
-            color: #6b7280;
-            text-decoration: none;
-            font-size: 13px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="header">
-            <h1>${adminName}</h1>
-            <p>Full Stack Engineer</p>
-          </div>
-          <div class="content">
-            <div class="greeting">
-              Hi ${data.originalMessage?.name || 'there'},
-            </div>
-            <div class="message-body">${data.message}</div>
-            <div class="signature">
-              <div class="signature-name">${adminName}</div>
-              <div class="signature-title">Full Stack Engineer</div>
-            </div>
-            ${data.originalMessage ? `
-            <div class="original-message">
-              <div class="original-header">In reply to your message</div>
-              <div class="original-meta">
-                <strong>From:</strong> ${data.originalMessage.name} &lt;${data.originalMessage.email}&gt;<br>
-                <strong>Date:</strong> ${originalDate}<br>
-                <strong>Subject:</strong> ${data.originalMessage.subject}
-              </div>
-              <div class="original-content">${data.originalMessage.message}</div>
-            </div>
-            ` : ''}
-          </div>
-          <div class="footer">
-            <p>This email was sent by ${adminName}</p>
-            <div class="social-links">
-              <a href="https://github.com/Abdullah-Jawahir">GitHub</a>
-              <a href="https://www.linkedin.com/in/mohamed-jawahir-abdullah/">LinkedIn</a>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    const info = await transporter.sendMail({
-      from: `"${adminName}" <${process.env.SMTP_USER}>`,
-      to: data.to,
-      replyTo: adminEmail,
-      subject: data.subject,
-      html: htmlContent,
-    });
-
-    console.log('Email sent via Nodemailer:', info.messageId);
-    return true;
-  } catch (error: unknown) {
-    console.error('Failed to send email via Nodemailer:', error);
-    
-    // Provide more helpful error messages
-    if (error instanceof Error) {
-      if (error.message.includes('Invalid login') || error.message.includes('535')) {
-        throw new Error('Gmail authentication failed. Please check your SMTP_USER and SMTP_PASS. For Gmail, use an App Password from https://myaccount.google.com/apppasswords');
-      }
-      if (error.message.includes('ECONNREFUSED')) {
-        throw new Error('Could not connect to email server. Please check your SMTP settings.');
-      }
-      throw error;
-    }
-    throw new Error('Failed to send email via Gmail SMTP');
-  }
-};
+}

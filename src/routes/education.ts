@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../config/firebase';
-import { authenticateToken } from '../middleware/auth';
-import { AuthenticatedRequest } from '../types';
+import { authenticateWithPermissions, requirePermission } from '../middleware/permissions';
+import { AuthenticatedRequestWithPermissions } from '../types';
 import { z } from 'zod';
 
 const router = Router();
@@ -65,7 +65,7 @@ router.get('/:id', async (req, res: Response) => {
 });
 
 // POST /api/education - Create education entry
-router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', authenticateWithPermissions, requirePermission('education', 'CREATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const validation = educationSchema.safeParse(req.body);
     
@@ -95,7 +95,7 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 });
 
 // PUT /api/education/:id - Update education entry
-router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:id', authenticateWithPermissions, requirePermission('education', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     const validation = educationSchema.safeParse(req.body);
@@ -136,7 +136,7 @@ router.put('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Res
 });
 
 // DELETE /api/education/:id - Delete education entry
-router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', authenticateWithPermissions, requirePermission('education', 'DELETE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const id = req.params.id as string;
     
@@ -166,7 +166,7 @@ router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: 
 });
 
 // PUT /api/education/batch/reorder - Bulk reorder education
-router.put('/batch/reorder', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/batch/reorder', authenticateWithPermissions, requirePermission('education', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     const { education } = req.body;
     
