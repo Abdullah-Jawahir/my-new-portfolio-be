@@ -193,6 +193,105 @@ const aboutProfileSchema = z.object({
   yearsExperience: z.string().optional(),
 });
 
+// Schema for avatar crop settings
+const avatarCropSchema = z.object({
+  cropSettings: z.object({
+    scale: z.number().min(0.1).max(5),
+    positionX: z.number(),
+    positionY: z.number(),
+    rotation: z.number(),
+  }),
+});
+
+// PUT /api/profile/avatar-crop/:type - Update avatar crop settings (home or about)
+router.put('/avatar-crop/:type', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    const avatarType = req.params.type as string;
+    
+    if (avatarType !== 'home' && avatarType !== 'about') {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid avatar type. Must be "home" or "about"',
+      });
+      return;
+    }
+
+    const validation = avatarCropSchema.safeParse(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid crop settings',
+        details: validation.error.errors,
+      });
+      return;
+    }
+
+    const fieldName = avatarType === 'home' ? 'homeAvatarCrop' : 'aboutAvatarCrop';
+    const resourceType = avatarType === 'home' ? 'homeAvatarCropUpdate' : 'aboutAvatarCropUpdate';
+    const resourceName = avatarType === 'home' ? 'Home Page Photo Crop Settings' : 'About Page Photo Crop Settings';
+
+    // Check if sub-admin needs approval
+    if (req.isSubAdmin) {
+      // Get current crop settings for comparison
+      const profileDoc = await db.collection('profile').doc('main').get();
+      const currentCropSettings = profileDoc.exists ? profileDoc.data()?.[fieldName] : null;
+
+      // Create a pending request for crop settings update
+      // Only include previousData if it exists (Firestore doesn't allow undefined values)
+      const pendingRequest: Record<string, unknown> = {
+        subAdminId: req.subAdmin?.id,
+        subAdminEmail: req.subAdmin?.email,
+        subAdminName: req.subAdmin?.name || 'Sub Admin',
+        action: 'UPDATE',
+        resourceType,
+        resourceName,
+        page: 'profile',
+        data: {
+          [fieldName]: validation.data.cropSettings,
+        },
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      // Only add previousData if there are existing crop settings
+      if (currentCropSettings) {
+        pendingRequest.previousData = { [fieldName]: currentCropSettings };
+      }
+
+      await db.collection('pendingRequests').add(pendingRequest);
+
+      res.json({
+        success: true,
+        data: { 
+          [fieldName]: validation.data.cropSettings,
+          requiresApproval: true,
+        },
+        message: `${avatarType === 'home' ? 'Home' : 'About'} avatar crop settings update request submitted for approval`,
+      });
+      return;
+    }
+
+    // Core admin - update directly
+    await db.collection('profile').doc('main').set({
+      [fieldName]: validation.data.cropSettings,
+      updatedAt: new Date(),
+    }, { merge: true });
+
+    res.json({
+      success: true,
+      data: { [fieldName]: validation.data.cropSettings },
+      message: `${avatarType === 'home' ? 'Home' : 'About'} avatar crop settings updated successfully`,
+    });
+  } catch (error) {
+    console.error('Error updating avatar crop settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update avatar crop settings',
+    });
+  }
+});
+
 // PUT /api/profile/about - Update about-specific profile fields (requires UPDATE permission on 'about' page)
 router.put('/about', authenticateWithPermissions, requirePermission('about', 'UPDATE'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
