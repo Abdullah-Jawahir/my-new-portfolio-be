@@ -157,6 +157,7 @@ router.post('/cv', authenticateWithPermissions, requirePermission('profile', 'UP
 });
 
 // POST /api/files/avatar - Upload avatar (requires UPDATE permission on profile)
+// This is kept for backward compatibility - uploads to general avatarUrl
 router.post('/avatar', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), upload.single('avatar'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
   try {
     if (!req.file) {
@@ -205,6 +206,112 @@ router.post('/avatar', authenticateWithPermissions, requirePermission('profile',
     res.status(500).json({
       success: false,
       error: 'Failed to upload avatar',
+    });
+  }
+});
+
+// POST /api/files/home-avatar - Upload home page avatar (requires UPDATE permission on profile)
+router.post('/home-avatar', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), upload.single('avatar'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        error: 'No file uploaded',
+      });
+      return;
+    }
+
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedImageTypes.includes(req.file.mimetype)) {
+      res.status(400).json({
+        success: false,
+        error: 'Avatar must be an image file (JPEG, PNG, GIF, or WebP)',
+      });
+      return;
+    }
+
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer, 'avatars/home', 'image');
+
+    // Delete old home avatar if exists
+    const profileDoc = await db.collection('profile').doc('main').get();
+    if (profileDoc.exists) {
+      const oldPublicId = profileDoc.data()?.homeAvatarPublicId;
+      if (oldPublicId) {
+        await deleteFromCloudinary(oldPublicId, 'image');
+      }
+    }
+
+    // Update profile with new home avatar URL
+    await db.collection('profile').doc('main').set({
+      homeAvatarUrl: result.url,
+      homeAvatarPublicId: result.publicId,
+      updatedAt: new Date(),
+    }, { merge: true });
+    
+    res.json({
+      success: true,
+      data: { homeAvatarUrl: result.url },
+      message: 'Home avatar uploaded successfully',
+    });
+  } catch (error) {
+    console.error('Error uploading home avatar:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to upload home avatar',
+    });
+  }
+});
+
+// POST /api/files/about-avatar - Upload about page avatar (requires UPDATE permission on profile)
+router.post('/about-avatar', authenticateWithPermissions, requirePermission('profile', 'UPDATE'), upload.single('avatar'), async (req: AuthenticatedRequestWithPermissions, res: Response) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        error: 'No file uploaded',
+      });
+      return;
+    }
+
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedImageTypes.includes(req.file.mimetype)) {
+      res.status(400).json({
+        success: false,
+        error: 'Avatar must be an image file (JPEG, PNG, GIF, or WebP)',
+      });
+      return;
+    }
+
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer, 'avatars/about', 'image');
+
+    // Delete old about avatar if exists
+    const profileDoc = await db.collection('profile').doc('main').get();
+    if (profileDoc.exists) {
+      const oldPublicId = profileDoc.data()?.aboutAvatarPublicId;
+      if (oldPublicId) {
+        await deleteFromCloudinary(oldPublicId, 'image');
+      }
+    }
+
+    // Update profile with new about avatar URL
+    await db.collection('profile').doc('main').set({
+      aboutAvatarUrl: result.url,
+      aboutAvatarPublicId: result.publicId,
+      updatedAt: new Date(),
+    }, { merge: true });
+    
+    res.json({
+      success: true,
+      data: { aboutAvatarUrl: result.url },
+      message: 'About avatar uploaded successfully',
+    });
+  } catch (error) {
+    console.error('Error uploading about avatar:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to upload about avatar',
     });
   }
 });
