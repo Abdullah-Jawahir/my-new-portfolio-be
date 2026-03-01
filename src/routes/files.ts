@@ -230,7 +230,42 @@ router.post('/home-avatar', authenticateWithPermissions, requirePermission('prof
       return;
     }
 
-    // Upload to Cloudinary
+    // Check if sub-admin needs approval
+    if (req.isSubAdmin) {
+      // Upload to Cloudinary pending folder (will be used after approval)
+      const result = await uploadToCloudinary(req.file.buffer, 'avatars/home-pending', 'image');
+
+      // Create a pending request for home avatar upload
+      const pendingRequest = {
+        subAdminId: req.subAdmin?.id,
+        subAdminEmail: req.subAdmin?.email,
+        subAdminName: req.subAdmin?.name || 'Sub Admin',
+        action: 'UPDATE',
+        resourceType: 'homeAvatarUpload',
+        resourceName: 'Home Page Photo',
+        page: 'profile',
+        data: {
+          homeAvatarUrl: result.url,
+          homeAvatarPublicId: result.publicId,
+        },
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      await db.collection('pendingRequests').add(pendingRequest);
+
+      res.json({
+        success: true,
+        data: { 
+          homeAvatarUrl: result.url,
+          requiresApproval: true,
+        },
+        message: 'Home avatar upload request submitted for approval',
+      });
+      return;
+    }
+
+    // Core admin - upload directly
     const result = await uploadToCloudinary(req.file.buffer, 'avatars/home', 'image');
 
     // Delete old home avatar if exists
@@ -283,7 +318,42 @@ router.post('/about-avatar', authenticateWithPermissions, requirePermission('pro
       return;
     }
 
-    // Upload to Cloudinary
+    // Check if sub-admin needs approval
+    if (req.isSubAdmin) {
+      // Upload to Cloudinary pending folder (will be used after approval)
+      const result = await uploadToCloudinary(req.file.buffer, 'avatars/about-pending', 'image');
+
+      // Create a pending request for about avatar upload
+      const pendingRequest = {
+        subAdminId: req.subAdmin?.id,
+        subAdminEmail: req.subAdmin?.email,
+        subAdminName: req.subAdmin?.name || 'Sub Admin',
+        action: 'UPDATE',
+        resourceType: 'aboutAvatarUpload',
+        resourceName: 'About Page Photo',
+        page: 'profile',
+        data: {
+          aboutAvatarUrl: result.url,
+          aboutAvatarPublicId: result.publicId,
+        },
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      await db.collection('pendingRequests').add(pendingRequest);
+
+      res.json({
+        success: true,
+        data: { 
+          aboutAvatarUrl: result.url,
+          requiresApproval: true,
+        },
+        message: 'About avatar upload request submitted for approval',
+      });
+      return;
+    }
+
+    // Core admin - upload directly
     const result = await uploadToCloudinary(req.file.buffer, 'avatars/about', 'image');
 
     // Delete old about avatar if exists
