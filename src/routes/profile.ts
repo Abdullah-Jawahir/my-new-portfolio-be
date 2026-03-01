@@ -228,7 +228,51 @@ router.put('/avatar-crop/:type', authenticateWithPermissions, requirePermission(
     }
 
     const fieldName = avatarType === 'home' ? 'homeAvatarCrop' : 'aboutAvatarCrop';
-    
+    const resourceType = avatarType === 'home' ? 'homeAvatarCropUpdate' : 'aboutAvatarCropUpdate';
+    const resourceName = avatarType === 'home' ? 'Home Page Photo Crop Settings' : 'About Page Photo Crop Settings';
+
+    // Check if sub-admin needs approval
+    if (req.isSubAdmin) {
+      // Get current crop settings for comparison
+      const profileDoc = await db.collection('profile').doc('main').get();
+      const currentCropSettings = profileDoc.exists ? profileDoc.data()?.[fieldName] : null;
+
+      // Create a pending request for crop settings update
+      // Only include previousData if it exists (Firestore doesn't allow undefined values)
+      const pendingRequest: Record<string, unknown> = {
+        subAdminId: req.subAdmin?.id,
+        subAdminEmail: req.subAdmin?.email,
+        subAdminName: req.subAdmin?.name || 'Sub Admin',
+        action: 'UPDATE',
+        resourceType,
+        resourceName,
+        page: 'profile',
+        data: {
+          [fieldName]: validation.data.cropSettings,
+        },
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      // Only add previousData if there are existing crop settings
+      if (currentCropSettings) {
+        pendingRequest.previousData = { [fieldName]: currentCropSettings };
+      }
+
+      await db.collection('pendingRequests').add(pendingRequest);
+
+      res.json({
+        success: true,
+        data: { 
+          [fieldName]: validation.data.cropSettings,
+          requiresApproval: true,
+        },
+        message: `${avatarType === 'home' ? 'Home' : 'About'} avatar crop settings update request submitted for approval`,
+      });
+      return;
+    }
+
+    // Core admin - update directly
     await db.collection('profile').doc('main').set({
       [fieldName]: validation.data.cropSettings,
       updatedAt: new Date(),
