@@ -427,6 +427,84 @@ async function executeApprovedRequest(request: PendingRequest): Promise<{ succes
       return { success: false, message: 'Invalid action for cvUpload' };
     }
 
+    // Special handling for home avatar upload approval
+    if (request.resourceType === 'homeAvatarUpload') {
+      if (request.action === 'UPDATE') {
+        const { deleteFromCloudinary } = await import('../config/cloudinary');
+        
+        // Delete old home avatar if exists
+        const profileDoc = await db.collection('profile').doc('main').get();
+        if (profileDoc.exists) {
+          const oldPublicId = profileDoc.data()?.homeAvatarPublicId;
+          if (oldPublicId) {
+            await deleteFromCloudinary(oldPublicId, 'image');
+          }
+        }
+
+        // Update profile with the pending home avatar URL (it's already uploaded to Cloudinary)
+        await db.collection('profile').doc('main').set({
+          homeAvatarUrl: request.data.homeAvatarUrl,
+          homeAvatarPublicId: request.data.homeAvatarPublicId,
+          updatedAt: new Date(),
+        }, { merge: true });
+        
+        return { success: true, message: 'Home avatar upload approved and applied' };
+      }
+      return { success: false, message: 'Invalid action for homeAvatarUpload' };
+    }
+
+    // Special handling for about avatar upload approval
+    if (request.resourceType === 'aboutAvatarUpload') {
+      if (request.action === 'UPDATE') {
+        const { deleteFromCloudinary } = await import('../config/cloudinary');
+        
+        // Delete old about avatar if exists
+        const profileDoc = await db.collection('profile').doc('main').get();
+        if (profileDoc.exists) {
+          const oldPublicId = profileDoc.data()?.aboutAvatarPublicId;
+          if (oldPublicId) {
+            await deleteFromCloudinary(oldPublicId, 'image');
+          }
+        }
+
+        // Update profile with the pending about avatar URL (it's already uploaded to Cloudinary)
+        await db.collection('profile').doc('main').set({
+          aboutAvatarUrl: request.data.aboutAvatarUrl,
+          aboutAvatarPublicId: request.data.aboutAvatarPublicId,
+          updatedAt: new Date(),
+        }, { merge: true });
+        
+        return { success: true, message: 'About avatar upload approved and applied' };
+      }
+      return { success: false, message: 'Invalid action for aboutAvatarUpload' };
+    }
+
+    // Special handling for home avatar crop settings update approval
+    if (request.resourceType === 'homeAvatarCropUpdate') {
+      if (request.action === 'UPDATE') {
+        await db.collection('profile').doc('main').set({
+          homeAvatarCrop: request.data.homeAvatarCrop,
+          updatedAt: new Date(),
+        }, { merge: true });
+        
+        return { success: true, message: 'Home avatar crop settings approved and applied' };
+      }
+      return { success: false, message: 'Invalid action for homeAvatarCropUpdate' };
+    }
+
+    // Special handling for about avatar crop settings update approval
+    if (request.resourceType === 'aboutAvatarCropUpdate') {
+      if (request.action === 'UPDATE') {
+        await db.collection('profile').doc('main').set({
+          aboutAvatarCrop: request.data.aboutAvatarCrop,
+          updatedAt: new Date(),
+        }, { merge: true });
+        
+        return { success: true, message: 'About avatar crop settings approved and applied' };
+      }
+      return { success: false, message: 'Invalid action for aboutAvatarCropUpdate' };
+    }
+
     // Special handling for reorder operations
     if (request.resourceType === 'reorder') {
       const reorderData = request.data as { collection: string; items: Array<{ id: string; order: number; featured?: boolean }> };
